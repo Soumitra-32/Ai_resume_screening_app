@@ -1,0 +1,8 @@
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+# Ignore Python cache & environment
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
