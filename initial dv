@@ -1,0 +1,4 @@
+User { _id, name, email, passwordHash, role }
+Job { _id, recruiterId(ref User), title, description, requiredSkills[], experienceRequired }
+Resume { _id, candidateId(ref User), fileUrl, parsedText, extractedSkills[], extractedExperience }
+Application { _id, jobId(ref Job), resumeId(ref Resume), matchScore, status, appliedAt }

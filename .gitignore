@@ -1,8 +1,14 @@
-.ipynb_checkpoints/
-*/.ipynb_checkpoints/
-# Ignore Python cache & environment
+node_modules/
+dist/
+build/
+.env
+*.log
 __pycache__/
 *.pyc
-.env
-venv/
 .venv/
+venv/
+.DS_Store
+uploads/
+*.pkl
+.vscode/
+mongo-data/
