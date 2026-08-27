@@ -171,3 +171,34 @@ def parse_resume_file(
     entities = extract_entities(raw_text)
 
     return raw_text, name, email, phone, entities
+
+
+def get_resume_text(
+    file_bytes: Optional[bytes] = None,
+    file_extension: Optional[str] = None,
+    raw_text: Optional[str] = None,
+) -> str:
+    """
+    Unified entry point that works with EITHER:
+    - a raw file (PDF/DOCX bytes) -> extracts text
+    - already-extracted text (e.g. from a CSV column like Resume_str)
+
+    Exactly one of (file_bytes + file_extension) OR raw_text should be provided.
+    Never throws on missing/empty input — always returns a string (possibly empty).
+    """
+    if raw_text is not None:
+        return str(raw_text).strip()
+
+    if file_bytes is not None and file_extension is not None:
+        ext = file_extension.lower()
+        try:
+            if ext == ".pdf":
+                return extract_text_from_pdf(file_bytes)
+            elif ext == ".docx":
+                return extract_text_from_docx(file_bytes)
+            else:
+                return ""
+        except Exception:
+            return ""
+
+    return ""
