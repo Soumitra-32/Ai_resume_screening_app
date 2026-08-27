@@ -17,3 +17,19 @@ class ParseResponse(BaseModel):
     file_type: str
     data: ParsedResume
     warnings: Optional[List[str]] = None
+
+class ScoreRequest(BaseModel):
+    resume_text: str
+    job_description: str
+    required_skills: List[str] = []
+    resume_experience_years: Optional[int] = None
+    required_experience_years: Optional[int] = None
+
+
+class ScoreResponse(BaseModel):
+    match_score: float
+    skill_overlap: float
+    semantic_similarity: float
+    experience_match: float
+    resume_skills_found: List[str]
+    matched_required_skills: List[str]
