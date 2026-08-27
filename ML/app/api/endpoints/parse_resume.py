@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 import os
 
-from app.services.resume_parser import parse_resume_file
+from app.services.resume_parser import get_resume_text, parse_resume_file
 from app.models.schemas import ParseResponse, ParsedResume
 from app.core.config import settings
 
