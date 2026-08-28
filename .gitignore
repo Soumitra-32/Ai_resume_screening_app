@@ -12,3 +12,5 @@ uploads/
 *.pkl
 .vscode/
 mongo-data/
+.ipynb_checkpoints/
+.idea/
