@@ -8,4 +8,7 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   uploadDir: process.env.UPLOAD_DIR || "./uploads",
   mongoUri: process.env.MONGO_URI || "mongodb://admin:admin123@localhost:27017/resume_screener?authSource=admin",
+  redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
+  mlServiceUrl: process.env.ML_SERVICE_URL || "http://localhost:8000",
+  resumeQueueConcurrency: Number(process.env.RESUME_QUEUE_CONCURRENCY) || 3,
 };

@@ -3,6 +3,7 @@ import { Resume } from "../models/Resume";
 import { Job } from "../models/Job";
 import { Application } from "../models/Application";
 import { asyncHandler } from "../utils/asyncHandler";
+import { enqueueResumeScoring } from "../queues/resumeQueue";
 
 export const applyToJob = asyncHandler(async (req: Request, res: Response) => {
   const { resumeId } = req.body;
@@ -14,6 +15,13 @@ export const applyToJob = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const application = await Application.create({ jobId, resumeId, status: "pending" });
+
+  await enqueueResumeScoring({
+    applicationId: application._id.toString(),
+    resumeId: resume._id.toString(),
+    jobId,
+  });
+
   res.status(201).json(application);
 });
 
@@ -25,7 +33,7 @@ export const listApplications = asyncHandler(async (req: Request, res: Response)
   }
 
   const applications = await Application.find({ jobId: req.params.id })
-    .populate("resume")
+    .populate("resumeId")
     .sort({ matchScore: -1 });
   res.json(applications);
 });

@@ -1,15 +1,47 @@
 import { Request, Response } from "express";
 import { Resume } from "../models/Resume";
+import { Application } from "../models/Application";
 import { asyncHandler } from "../utils/asyncHandler";
+import { parseResume } from "../services/mlServiceClient";
+import { enqueueResumeScoring } from "../queues/resumeQueue";
 
 export const uploadResume = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+  const { jobId } = req.body; // must be sent from frontend upload form
+
   const resume = await Resume.create({
     candidateId: req.user!.id,
     fileUrl: req.file.path,
-    extractedSkills: [], // populated later by ML service (Phase 3+)
+    extractedSkills: [],
   });
+
+  // Parse resume synchronously (fast: text extraction + regex/NER)
+  try {
+    const parsed = await parseResume(resume.fileUrl);
+    resume.parsedText = parsed.parsed_text;
+    resume.extractedSkills = parsed.extracted_skills;
+    resume.extractedExperience = parsed.extracted_experience;
+    await resume.save();
+  } catch (err) {
+    console.error("[uploadResume] parseResume failed:", err);
+    // resume is still saved without parsed data; you can retry later
+  }
+
+  // If applying to a specific job right away, create application + enqueue scoring
+  if (jobId) {
+    const application = await Application.create({
+      jobId,
+      resumeId: resume._id,
+      status: "pending",
+    });
+
+    await enqueueResumeScoring({
+      applicationId: application._id.toString(),
+      resumeId: resume._id.toString(),
+      jobId,
+    });
+  }
 
   res.status(201).json(resume);
 });
