@@ -8,7 +8,7 @@ import { enqueueResumeScoring } from "../queues/resumeQueue";
 export const uploadResume = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const { jobId } = req.body; // must be sent from frontend upload form
+  const { jobId } = req.body;
 
   const resume = await Resume.create({
     candidateId: req.user!.id,
@@ -16,19 +16,17 @@ export const uploadResume = asyncHandler(async (req: Request, res: Response) => 
     extractedSkills: [],
   });
 
-  // Parse resume synchronously (fast: text extraction + regex/NER)
   try {
-    const parsed = await parseResume(resume.fileUrl);
-    resume.parsedText = parsed.parsed_text;
-    resume.extractedSkills = parsed.extracted_skills;
-    resume.extractedExperience = parsed.extracted_experience;
+    const parsed = await parseResume(req.file.path, req.file.originalname);
+    resume.parsedText = parsed.data.raw_text;
+    // The ML parse endpoint doesn't extract skills/experience — that happens at scoring time.
+    // Leave extractedSkills/extractedExperience as-is here; they get filled in by the worker
+    // after /score-resume runs (see resumeWorker.ts fix below).
     await resume.save();
   } catch (err) {
     console.error("[uploadResume] parseResume failed:", err);
-    // resume is still saved without parsed data; you can retry later
   }
 
-  // If applying to a specific job right away, create application + enqueue scoring
   if (jobId) {
     const application = await Application.create({
       jobId,

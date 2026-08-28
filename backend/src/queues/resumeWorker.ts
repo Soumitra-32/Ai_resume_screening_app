@@ -22,22 +22,24 @@ async function processResumeScoring(job: Job<ResumeScoreJobData>) {
   }
 
   const result = await scoreResume({
-    resume_text: resume.parsedText,
-    job_description: jobPosting.description,
-    required_skills: jobPosting.requiredSkills ?? [],
-    experience_required: jobPosting.experienceRequired ?? 0,
-  });
+  resume_text: resume.parsedText,
+  job_description: jobPosting.description,
+  required_skills: jobPosting.requiredSkills ?? [],
+  resume_experience_years: resume.extractedExperience ?? undefined,
+  required_experience_years: jobPosting.experienceRequired ?? undefined, // fix #12
+});
 
-  await Application.findByIdAndUpdate(applicationId, {
-    matchScore: result.match_score,
-    status: "scored",
-  });
+await Application.findByIdAndUpdate(applicationId, {
+  matchScore: result.match_score,
+  status: "scored",
+});
 
-  await Resume.findByIdAndUpdate(resumeId, {
-    extractedSkills: result.skills,
-    extractedExperience: result.experience,
-  });
-
+// fix #13: there's no result.skills / result.experience — use the real field names
+await Resume.findByIdAndUpdate(resumeId, {
+  extractedSkills: result.resume_skills_found,
+  // ScoreResponse has no total "years" figure, only experience_match (a 0-1 ratio).
+  // Keep whatever extractedExperience Resume already had — it isn't returned by scoring.
+});
   return result;
 }
 

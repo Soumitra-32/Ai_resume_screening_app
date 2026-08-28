@@ -1,0 +1,25 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    needs: []
+    steps:
+      - name: Trigger Render deploy (backend)
+        run: curl -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}"
+
+  deploy-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy (resume-worker)
+        run: curl -X POST "${{ secrets.RENDER_WORKER_DEPLOY_HOOK }}"
+
+  deploy-ml-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy (ml-service)
+        run: curl -X POST "${{ secrets.RENDER_ML_DEPLOY_HOOK }}"

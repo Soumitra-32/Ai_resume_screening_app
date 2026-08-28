@@ -4,10 +4,10 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
+    "worker": "ts-node src/worker.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "ts-node src/seed.ts",
-    "postinstall": "prisma skills sync || exit 0"
+    "seed": "ts-node src/seed.ts"
   },
   "dependencies": {
     "axios": "^1.20.0",

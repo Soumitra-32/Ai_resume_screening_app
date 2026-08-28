@@ -28,6 +28,15 @@ services:
     volumes:
       - redis-data:/data
 
+  ml-service:
+    build:
+      context: ./ML
+      dockerfile: Dockerfile
+    container_name: resume_screener_ml
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
   backend:
     build:
       context: ./backend
@@ -49,6 +58,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      ml-service:
+        condition: service_started
 
   resume-worker:
     build:
@@ -69,6 +80,8 @@ services:
       mongo:
         condition: service_healthy
       redis:
+        condition: service_started
+      ml-service:
         condition: service_started
 
   frontend:

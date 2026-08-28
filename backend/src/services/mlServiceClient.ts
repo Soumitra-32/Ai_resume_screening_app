@@ -1,39 +1,64 @@
 import axios, { AxiosError } from "axios";
+import fs from "fs";
+import FormData from "form-data";
 import { env } from "../config/env";
 
 const mlClient = axios.create({
-  baseURL: env.mlServiceUrl,
+  baseURL: `${env.mlServiceUrl}/api`, // fix #9: routes are mounted under /api
   timeout: 30_000,
 });
 
-export interface ScoreResumeRequest {
-  resume_text: string;
-  job_description: string;
-  required_skills: string[];
-  experience_required: number;
-}
+// ---- Parse ----
 
-export interface ScoreResumeResponse {
-  skills: string[];
-  experience: number;
-  match_score: number;
+export interface ParsedResumeData {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  raw_text: string;
+  text_length: number;
+  detected_entities: string[] | null;
 }
 
 export interface ParseResumeResponse {
-  parsed_text: string;
-  extracted_skills: string[];
-  extracted_experience: number;
+  success: boolean;
+  filename: string;
+  file_type: string;
+  data: ParsedResumeData;
+  warnings: string[] | null;
 }
 
-export async function parseResume(fileUrl: string): Promise<ParseResumeResponse> {
+// fix #10: send the actual file as multipart, not a JSON { file_url }
+export async function parseResume(filePath: string, originalName: string): Promise<ParseResumeResponse> {
   try {
-    const { data } = await mlClient.post<ParseResumeResponse>("/parse-resume", {
-      file_url: fileUrl,
+    const form = new FormData();
+    form.append("file", fs.createReadStream(filePath), originalName);
+
+    const { data } = await mlClient.post<ParseResumeResponse>("/parse-resume", form, {
+      headers: form.getHeaders(),
     });
     return data;
   } catch (err) {
     throw wrapMlError("parseResume", err);
   }
+}
+
+// ---- Score ----
+
+export interface ScoreResumeRequest {
+  resume_text: string;
+  job_description: string;
+  required_skills: string[];
+  resume_experience_years?: number;
+  required_experience_years?: number; // fix #12: renamed from experience_required
+}
+
+export interface ScoreResumeResponse {
+  match_score: number;
+  skill_overlap: number;
+  semantic_similarity: number;
+  experience_match: number;
+  resume_skills_found: string[];
+  matched_required_skills: string[];
 }
 
 export async function scoreResume(
