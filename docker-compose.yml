@@ -25,6 +25,8 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
 
   backend:
     build:
@@ -36,6 +38,8 @@ services:
       - .env
     environment:
       - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin123}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8000
     ports:
       - "5000:5000"
     volumes:
@@ -43,6 +47,29 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      redis:
+        condition: service_started
+
+  resume-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume_screener_worker
+    restart: unless-stopped
+    command: npm run worker
+    env_file:
+      - .env
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin123}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8000
+    volumes:
+      - uploads-data:/app/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     build:
@@ -58,3 +85,4 @@ services:
 volumes:
   mongo-data:
   uploads-data:
+  redis-data:
