@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
+import logging
 
 from app.models.schemas import ScoreRequest, ScoreResponse
 from app.services.scoring_engine import compute_match_score
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/score-resume", response_model=ScoreResponse)
@@ -22,6 +24,7 @@ async def score_resume(payload: ScoreRequest):
             required_experience_years=payload.required_experience_years,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Scoring failed: {str(e)}")
+        logger.exception("Scoring failed")
+        raise HTTPException(status_code=500, detail="Scoring failed due to an internal error. Please try again.")
 
     return ScoreResponse(**result)

@@ -8,16 +8,44 @@ import type { Job, Resume } from '@/types';
 export default function ApplyPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const [job, setJob] = useState<Job | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [resume, setResume] = useState<Resume | null>(null);
   const [hasApplied, setHasApplied] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!jobId) return;
     (async () => {
-      const jobData = await jobApi.get(jobId);
-      setJob(jobData);
+      try {
+        const jobData = await jobApi.get(jobId);
+        setJob(jobData);
+      } catch {
+        setLoadError('Could not load this role.');
+      }
+    })();
+  }, [jobId]);
+
+  // 7.10 — check whether the candidate already applied, so reloading
+  // the page doesn't show the application form again.
+  useEffect(() => {
+    if (!jobId) return;
+    (async () => {
+      setIsCheckingStatus(true);
+      try {
+        const applications = await resumeApi.myApplications();
+        const existing = applications.some((app) => {
+          const appliedJobId = typeof app.jobId === 'string' ? app.jobId : app.jobId.id;
+          return appliedJobId === jobId;
+        });
+        setHasApplied(existing);
+      } catch {
+        // Non-fatal: if this check fails, fall through and let the
+        // apply button's own duplicate-application handling (409) catch it.
+      } finally {
+        setIsCheckingStatus(false);
+      }
     })();
   }, [jobId]);
 
@@ -28,14 +56,22 @@ export default function ApplyPage() {
     try {
       await resumeApi.applyToJob(jobId, resume.id);
       setHasApplied(true);
-    } catch {
-      setError('Could not submit your application. Try again.');
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setHasApplied(true);
+      } else {
+        setError(err?.response?.data?.error ?? 'Could not submit your application. Try again.');
+      }
     } finally {
       setIsApplying(false);
     }
   }
 
-  if (!job) {
+  if (loadError) {
+    return <p className="text-sm text-flag">{loadError}</p>;
+  }
+
+  if (!job || isCheckingStatus) {
     return <p className="text-sm text-ink-600">Loading role…</p>;
   }
 
@@ -47,7 +83,9 @@ export default function ApplyPage() {
 
       <div className="mt-3 mb-8">
         <h1 className="font-display text-2xl text-paper">{job.title}</h1>
-        <p className="mt-1 text-sm text-ink-600">{job.experienceRequired}+ years experience</p>
+        <p className="mt-1 text-sm text-ink-600">
+          {job.experienceRequired != null ? `${job.experienceRequired}+ years experience` : 'No experience requirement specified'}
+        </p>
       </div>
 
       <div className="card mb-6 p-6">
@@ -82,7 +120,7 @@ export default function ApplyPage() {
               </button>
             </div>
           ) : (
-            <ResumeUpload onUploaded={setResume} />
+                 <ResumeUpload jobId={jobId} onUploaded={(r) => { setResume(r); setHasApplied(true); }} />
           )}
 
           {error && <p className="text-sm text-flag">{error}</p>}

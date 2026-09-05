@@ -18,9 +18,9 @@ export const jobApi = {
   },
 
   async update(jobId: string, payload: Partial<JobInput>): Promise<Job> {
-    const { data } = await apiClient.patch<Job>(`/jobs/${jobId}`, payload);
-    return data;
-  },
+  const { data } = await apiClient.put<Job>(`/jobs/${jobId}`, payload);
+  return data;
+},
 
   async remove(jobId: string): Promise<void> {
     await apiClient.delete(`/jobs/${jobId}`);
@@ -31,15 +31,5 @@ export const jobApi = {
     return data;
   },
 
-  async updateApplicationStatus(
-    jobId: string,
-    applicationId: string,
-    status: Application['status']
-  ): Promise<Application> {
-    const { data } = await apiClient.patch<Application>(
-      `/jobs/${jobId}/applications/${applicationId}`,
-      { status }
-    );
-    return data;
-  },
+
 };

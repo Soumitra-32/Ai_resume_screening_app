@@ -6,6 +6,7 @@ class ParsedResume(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    experience_years: Optional[float] = None
     raw_text: str
     text_length: int
     detected_entities: Optional[List[str]] = None
@@ -25,7 +26,6 @@ class ScoreRequest(BaseModel):
     resume_experience_years: Optional[int] = None
     required_experience_years: Optional[int] = None
 
-
 class ScoreResponse(BaseModel):
     match_score: float
     skill_overlap: float
@@ -33,3 +33,6 @@ class ScoreResponse(BaseModel):
     experience_match: float
     resume_skills_found: List[str]
     matched_required_skills: List[str]
+    missing_required_skills: List[str]
+    resume_experience_years: Optional[float] = None       # echo back what was scored against
+    required_experience_years: Optional[float] = None

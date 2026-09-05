@@ -10,12 +10,15 @@ interface JwtPayload {
 }
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
+  const cookieToken = (req as any).cookies?.sift_token;
   const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  const headerToken = header?.startsWith("Bearer ") ? header.split(" ")[1] : undefined;
+
+  const token = cookieToken || headerToken;
+  if (!token) {
+    return res.status(401).json({ error: "Not authenticated" });
   }
 
-  const token = header.split(" ")[1];
   try {
     const decoded = jwt.verify(token, env.jwtSecret) as JwtPayload;
     req.user = decoded;

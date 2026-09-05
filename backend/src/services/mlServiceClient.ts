@@ -4,7 +4,7 @@ import FormData from "form-data";
 import { env } from "../config/env";
 
 const mlClient = axios.create({
-  baseURL: `${env.mlServiceUrl}/api`, // fix #9: routes are mounted under /api
+  baseURL: `${env.mlServiceUrl}/api`,
   timeout: 30_000,
 });
 
@@ -14,6 +14,7 @@ export interface ParsedResumeData {
   name: string | null;
   email: string | null;
   phone: string | null;
+  experience_years: number | null;
   raw_text: string;
   text_length: number;
   detected_entities: string[] | null;
@@ -27,7 +28,6 @@ export interface ParseResumeResponse {
   warnings: string[] | null;
 }
 
-// fix #10: send the actual file as multipart, not a JSON { file_url }
 export async function parseResume(filePath: string, originalName: string): Promise<ParseResumeResponse> {
   try {
     const form = new FormData();
@@ -49,7 +49,7 @@ export interface ScoreResumeRequest {
   job_description: string;
   required_skills: string[];
   resume_experience_years?: number;
-  required_experience_years?: number; // fix #12: renamed from experience_required
+  required_experience_years?: number;
 }
 
 export interface ScoreResumeResponse {
@@ -59,6 +59,9 @@ export interface ScoreResumeResponse {
   experience_match: number;
   resume_skills_found: string[];
   matched_required_skills: string[];
+  missing_required_skills: string[];
+  resume_experience_years: number | null;
+  required_experience_years: number | null;
 }
 
 export async function scoreResume(

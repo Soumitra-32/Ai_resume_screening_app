@@ -2,11 +2,15 @@ import bcrypt from "bcrypt";
 import { connectDB } from "./config/db";
 import { User } from "./models/User";
 import { Job } from "./models/Job";
+import { Application } from "./models/Application";
+import { Resume } from "./models/Resume";
 import mongoose from "mongoose";
 
 async function seed() {
   await connectDB();
 
+  await Application.deleteMany({});
+  await Resume.deleteMany({});
   await User.deleteMany({});
   await Job.deleteMany({});
 

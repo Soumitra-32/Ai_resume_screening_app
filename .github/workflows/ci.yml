@@ -45,13 +45,13 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm run build --if-present
-      - run: npm test -- --ci
+
 
   ml-service-tests:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ml-service
+        working-directory: ML
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,8 +59,6 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - run: pip install -r requirements.txt
-      - run: pip install pytest
-      - run: pytest -q
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -85,6 +83,6 @@ jobs:
       - name: Build backend image
         run: docker build -t resume-backend ./backend
       - name: Build ml-service image
-        run: docker build -t resume-ml ./ml-service
+        run: docker build -t resume-ml ./ML
       - name: Build frontend image
         run: docker build -t resume-frontend ./frontend

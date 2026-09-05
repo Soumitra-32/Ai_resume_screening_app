@@ -6,12 +6,18 @@ import type { Application } from '@/types';
 export default function MyApplications() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const data = await resumeApi.myApplications();
-      setApplications(data);
-      setIsLoading(false);
+      try {
+        const data = await resumeApi.myApplications();
+        setApplications(data);
+      } catch {
+        setError('Could not load your applications.');
+      } finally {
+        setIsLoading(false);
+      }
     })();
   }, []);
 
@@ -22,6 +28,8 @@ export default function MyApplications() {
 
       {isLoading ? (
         <p className="mt-8 text-sm text-ink-600">Loading…</p>
+      ) : error ? (
+        <p className="mt-8 text-sm text-flag">{error}</p>
       ) : applications.length === 0 ? (
         <div className="card mt-8 p-10 text-center">
           <p className="text-paper">You haven't applied to any roles yet.</p>

@@ -23,3 +23,9 @@ jobs:
     steps:
       - name: Trigger Render deploy (ml-service)
         run: curl -X POST "${{ secrets.RENDER_ML_DEPLOY_HOOK }}"
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy (frontend)
+        run: curl -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}"

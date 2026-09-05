@@ -6,14 +6,21 @@ import type { Job } from '@/types';
 export default function CandidateJobsList() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
     (async () => {
       setIsLoading(true);
-      const data = await jobApi.list();
-      setJobs(data);
-      setIsLoading(false);
+      setLoadError(null);
+      try {
+        const data = await jobApi.list();
+        setJobs(data);
+      } catch {
+        setLoadError('Could not load open roles. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     })();
   }, []);
 
@@ -35,6 +42,10 @@ export default function CandidateJobsList() {
 
       {isLoading ? (
         <p className="mt-8 text-sm text-ink-600">Loading roles…</p>
+      ) : loadError ? (
+        <div className="card mt-8 p-10 text-center">
+          <p className="text-flag">{loadError}</p>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="card mt-8 p-10 text-center">
           <p className="text-paper">No roles match your search.</p>

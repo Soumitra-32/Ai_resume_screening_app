@@ -5,8 +5,8 @@ import { authenticate, authorize } from "../middlewares/authMiddleware";
 
 const router = Router();
 
-router.get("/", listJobs);
-router.get("/:id", getJob);
+router.get("/", authenticate, listJobs);
+router.get("/:id", authenticate, getJob);
 router.post("/", authenticate, authorize("recruiter"), createJob);
 router.put("/:id", authenticate, authorize("recruiter"), updateJob);
 router.delete("/:id", authenticate, authorize("recruiter"), deleteJob);

@@ -4,7 +4,9 @@ import type { Resume } from '@/types';
 
 interface ResumeUploadProps {
   onUploaded: (resume: Resume) => void;
+  jobId?: string; // when provided, upload + apply happen atomically server-side
 }
+
 
 const ACCEPTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
@@ -16,31 +18,45 @@ export default function ResumeUpload({ onUploaded }: ResumeUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
-    async (file: File) => {
-      setError(null);
+  async (file: File) => {
+    setError(null);
 
-      if (!ACCEPTED_TYPES.includes(file.type)) {
-        setError('Upload a PDF or DOCX file.');
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        setError('File is larger than 10MB.');
-        return;
-      }
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setError('Upload a PDF or DOCX file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File is larger than 10MB.');
+      return;
+    }
 
-      setFileName(file.name);
-      setProgress(0);
-      try {
-        const resume = await resumeApi.upload(file, setProgress);
-        onUploaded(resume);
-      } catch {
-        setError('Upload failed. Try again.');
-      } finally {
-        setProgress(null);
-      }
-    },
-    [onUploaded]
-  );
+    setFileName(file.name);
+    setProgress(0);
+    try {
+      const resume = await resumeApi.upload(file, setProgress);
+      onUploaded(resume);
+    } catch (err: any) {
+      setError(extractUploadErrorMessage(err));
+    } finally {
+      setProgress(null);
+    }
+  },
+  [onUploaded]
+);
+
+function extractUploadErrorMessage(err: any): string {
+  const backendMessage = err?.response?.data?.error;
+  if (typeof backendMessage === 'string' && backendMessage.trim()) {
+    return backendMessage;
+  }
+  if (err?.response?.status === 502) {
+    return 'We could not process this resume. Please check the file and try again.';
+  }
+  if (err?.response?.status === 413) {
+    return 'File is too large.';
+  }
+  return 'Upload failed. Try again.';
+}
 
   function onDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();

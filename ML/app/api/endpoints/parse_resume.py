@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
+import logging
 import os
 
 from app.services.resume_parser import get_resume_text, parse_resume_file
@@ -6,6 +7,7 @@ from app.models.schemas import ParseResponse, ParsedResume
 from app.core.config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/parse-resume", response_model=ParseResponse)
@@ -31,9 +33,13 @@ async def parse_resume(file: UploadFile = File(...)):
     warnings = []
 
     try:
-        raw_text, name, email, phone, entities = parse_resume_file(file_bytes, ext)
+        raw_text, name, email, phone, experience_years, entities = parse_resume_file(
+            file_bytes,
+            ext
+        )
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to parse file: {str(e)}")
+        logger.exception(f"Failed to parse resume file '{filename}'")
+        raise HTTPException(status_code=422, detail="Failed to parse this file. Please check the format and try again.")
 
     if not raw_text.strip():
         warnings.append("No extractable text found — file may be a scanned image (needs OCR).")
@@ -48,6 +54,7 @@ async def parse_resume(file: UploadFile = File(...)):
         name=name,
         email=email,
         phone=phone,
+        experience_years=experience_years,
         raw_text=raw_text,
         text_length=len(raw_text),
         detected_entities=entities,

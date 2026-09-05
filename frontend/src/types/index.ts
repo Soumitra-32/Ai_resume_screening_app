@@ -18,7 +18,8 @@ export interface Job {
   title: string;
   description: string;
   requiredSkills: string[];
-  experienceRequired: number;
+  experienceRequired?: number;
+  status: 'draft' | 'open' | 'closed' | 'archived'; // also add this — see backend Job.status fix from earlier
   createdAt: string;
   applicantCount?: number;
 }
@@ -27,7 +28,8 @@ export interface JobInput {
   title: string;
   description: string;
   requiredSkills: string[];
-  experienceRequired: number;
+  experienceRequired?: number;
+  status?: 'draft' | 'open' | 'closed' | 'archived';
 }
 
 export interface Resume {
@@ -40,12 +42,12 @@ export interface Resume {
   uploadedAt: string;
 }
 
-export type ApplicationStatus = 'pending' | 'reviewing' | 'shortlisted' | 'rejected';
+export type ApplicationStatus = 'pending' | 'scored' | 'shortlisted' | 'rejected' | 'hired' | 'failed';
 
 export interface Application {
   id: string;
-  jobId: string;
-  resumeId: string;
+  jobId: string | Job;          // populated in myApplications()
+  resumeId: string | Resume;    // populated in myApplications()
   matchScore: number | null;
   status: ApplicationStatus;
   appliedAt: string;

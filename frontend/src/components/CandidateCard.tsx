@@ -1,13 +1,13 @@
 import ScoreBadge from './ScoreBadge';
 import type { Application, ApplicationStatus } from '@/types';
 
+
 interface CandidateCardProps {
   application: Application;
   onStatusChange: (status: ApplicationStatus) => void;
 }
 
-const STATUS_OPTIONS: ApplicationStatus[] = ['pending', 'reviewing', 'shortlisted', 'rejected'];
-
+const STATUS_OPTIONS: ApplicationStatus[] = ['pending', 'scored', 'shortlisted', 'rejected', 'hired'];
 export default function CandidateCard({ application, onStatusChange }: CandidateCardProps) {
   return (
     <div className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">

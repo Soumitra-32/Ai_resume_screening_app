@@ -6,11 +6,9 @@ services:
     container_name: resume_screener_mongo
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?MONGO_USER not set}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD not set}
       MONGO_INITDB_DATABASE: ${MONGO_DB:-resume_screener}
-    ports:
-      - "27017:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -23,10 +21,13 @@ services:
     image: redis:7-alpine
     container_name: resume_screener_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   ml-service:
     build:
@@ -34,8 +35,12 @@ services:
       dockerfile: Dockerfile
     container_name: resume_screener_ml
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   backend:
     build:
@@ -46,7 +51,7 @@ services:
     env_file:
       - .env
     environment:
-      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin123}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_USER:?MONGO_USER not set}:${MONGO_PASSWORD:?MONGO_PASSWORD not set}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
       - REDIS_URL=redis://redis:6379
       - ML_SERVICE_URL=http://ml-service:8000
     ports:
@@ -57,9 +62,9 @@ services:
       mongo:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       ml-service:
-        condition: service_started
+        condition: service_healthy
 
   resume-worker:
     build:
@@ -71,7 +76,7 @@ services:
     env_file:
       - .env
     environment:
-      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin123}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_USER:?MONGO_USER not set}:${MONGO_PASSWORD:?MONGO_PASSWORD not set}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
       - REDIS_URL=redis://redis:6379
       - ML_SERVICE_URL=http://ml-service:8000
     volumes:
@@ -80,9 +85,9 @@ services:
       mongo:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       ml-service:
-        condition: service_started
+        condition: service_healthy
 
   frontend:
     build:

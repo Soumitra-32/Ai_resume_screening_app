@@ -1,4 +1,6 @@
 import { Candidate } from '../types/candidate';
+import { apiClient } from '../services/apiClient';
+import ScoreBadge from './ScoreBadge';
 
 interface Props {
   candidate: Candidate;
@@ -27,6 +29,16 @@ function escapeRegex(str: string) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+async function handleDownload(resumeUrl: string) {
+  const res = await apiClient.get(resumeUrl, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(res.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'resume';
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+
 export default function ResumePreviewModal({ candidate, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -46,9 +58,7 @@ export default function ResumePreviewModal({ candidate, onClose }: Props) {
             <span
               key={skill.name}
               className={`text-xs px-2 py-1 rounded-full ${
-                skill.matched
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-500'
+                skill.matched ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
               }`}
             >
               {skill.name}
@@ -61,21 +71,15 @@ export default function ResumePreviewModal({ candidate, onClose }: Props) {
         </div>
 
         <div className="p-4 border-t flex justify-between items-center">
-
-            href={candidate.resumeUrl}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            onClick={() => handleDownload(candidate.resumeUrl)}
             className="text-blue-600 text-sm hover:underline"
           >
             Download Original Resume
-          </a>
-          <ScoreBadgeInline score={candidate.matchScore} />
+          </button>
+          <ScoreBadge score={candidate.matchScore} size="sm" />
         </div>
       </div>
     </div>
   );
-}
-
-function ScoreBadgeInline({ score }: { score: number }) {
-  return <span className="text-sm font-semibold text-gray-700">{Math.round(score * 100)}% match</span>;
 }

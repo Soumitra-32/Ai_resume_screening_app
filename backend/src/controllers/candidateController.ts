@@ -2,7 +2,17 @@ import { Request, Response } from 'express';
 import { Job } from '../models/Job';
 import { Application } from '../models/Application';
 import { Resume } from '../models/Resume';
-import { User } from '../models/User';
+import { enqueueResumeScoring } from '../queues/resumeQueue';
+import { asyncHandler } from '../utils/asyncHandler';
+
+const ALLOWED_SORT_FIELDS: Record<string, string> = {
+  matchScore: 'matchScore',
+  experienceYears: 'resumeInfo.extractedExperience',
+  appliedAt: 'appliedAt',
+  name: 'candidateInfo.name',
+};
+
+const ALLOWED_STATUSES = ['pending', 'scored', 'shortlisted', 'rejected', 'hired', 'failed'];
 
 export async function getRankedCandidates(req: Request, res: Response) {
   const { jobId } = req.params;
@@ -14,124 +24,205 @@ export async function getRankedCandidates(req: Request, res: Response) {
     search,
     sortField = 'matchScore',
     sortOrder = 'desc',
+    page = '1',
+    limit = '20',
   } = req.query as Record<string, string>;
 
-  const skillList = skills ? skills.split(',').filter(Boolean) : [];
+  // 4.1 — validate minScore
+  const parsedMinScore = Number(minScore);
+  if (Number.isNaN(parsedMinScore) || parsedMinScore < 0 || parsedMinScore > 1) {
+    return res.status(400).json({ error: 'minScore must be a number between 0 and 1' });
+  }
 
-  const job = await Job.findById(jobId);
+  // 4.2 — validate minExperience
+  const parsedMinExperience = Number(minExperience);
+  if (Number.isNaN(parsedMinExperience) || parsedMinExperience < 0) {
+    return res.status(400).json({ error: 'minExperience must be a non-negative number' });
+  }
+
+  // 4.3 — validate status
+  if (status && !ALLOWED_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUSES.join(', ')}` });
+  }
+
+  // 4.4 — validate sortField against an allow-list
+  if (!Object.prototype.hasOwnProperty.call(ALLOWED_SORT_FIELDS, sortField)) {
+    return res.status(400).json({
+      error: `sortField must be one of: ${Object.keys(ALLOWED_SORT_FIELDS).join(', ')}`,
+    });
+  }
+  const sortOrderNormalized = sortOrder === 'asc' ? 1 : -1;
+  const sortKey = ALLOWED_SORT_FIELDS[sortField];
+
+  // 4.6 — pagination
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+
+  const skillList = skills ? skills.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+
+  const job = await Job.findOne({ _id: jobId, recruiterId: req.user!.id });
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
-  const appQuery: Record<string, any> = {
-    jobId,
-    matchScore: { $gte: parseFloat(minScore) },
-  };
-  if (status) appQuery.status = status;
+  // 4.7 — move filtering/sorting/pagination into MongoDB via aggregation
+  const pipeline: any[] = [
+    { $match: { jobId: job._id } },
+    {
+      $lookup: {
+        from: 'resumes',
+        localField: 'resumeId',
+        foreignField: '_id',
+        as: 'resumeInfo',
+      },
+    },
+    { $unwind: '$resumeInfo' },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'resumeInfo.candidateId',
+        foreignField: '_id',
+        as: 'candidateInfo',
+      },
+    },
+    { $unwind: '$candidateInfo' }, // 4.8 — inner join drops applications with a missing candidate
+    {
+      $match: {
+        $or: [
+          { matchScore: { $gte: parsedMinScore } },
+          { matchScore: { $exists: false } },
+          { matchScore: null },
+        ],
+        'resumeInfo.extractedExperience': { $gte: parsedMinExperience },
+        ...(status ? { status } : {}),
+        ...(skillList.length
+          ? { 'resumeInfo.extractedSkills': { $in: skillList } } // requires extractedSkills to be stored normalized/lowercase — see 4.5
+          : {}),
+        ...(search
+          ? {
+              $or: [
+                { 'candidateInfo.name': { $regex: search, $options: 'i' } },
+                { 'candidateInfo.email': { $regex: search, $options: 'i' } },
+              ],
+            }
+          : {}),
+      },
+    },
+    { $sort: { [sortKey]: sortOrderNormalized } },
+    {
+      $facet: {
+        data: [{ $skip: (pageNum - 1) * pageSize }, { $limit: pageSize }],
+        totalCount: [{ $count: 'count' }],
+      },
+    },
+  ];
 
-  const applications = await Application.find(appQuery).populate({
-    path: 'resumeId',
-    populate: { path: 'candidateId' },
+  const [result] = await Application.aggregate(pipeline);
+  const applications = result?.data ?? [];
+  const total = result?.totalCount?.[0]?.count ?? 0;
+
+  const requiredSkillSet = new Set((job.requiredSkills ?? []).map((s) => s.trim().toLowerCase()));
+
+  const mapped = applications.map((app: any) => ({
+    id: app.candidateInfo._id,
+    applicationId: app._id,
+    name: app.candidateInfo.name,
+    email: app.candidateInfo.email,
+    matchScore: app.matchScore ?? null,
+    experienceYears: app.resumeInfo.extractedExperience ?? 0,
+    skills: (app.resumeInfo.extractedSkills || []).map((s: string) => ({
+      name: s,
+      matched: requiredSkillSet.has(s.toLowerCase()),
+    })),
+    resumeUrl: `/api/resumes/${app.resumeInfo._id}/file`,
+    resumeText: app.resumeInfo.parsedText ?? '',
+    status: app.status,
+    appliedAt: app.appliedAt,
+  }));
+
+  res.json({
+    data: mapped,
+    pagination: { page: pageNum, limit: pageSize, total, totalPages: Math.ceil(total / pageSize) },
   });
-
-  const minExp = parseInt(minExperience, 10) || 0;
-
-  let mapped = applications
-    .filter((app: any) => {
-      const resume = app.resumeId;
-      if (!resume) return false;
-      if ((resume.extractedExperience ?? 0) < minExp) return false;
-      if (skillList.length && !skillList.some((s) => resume.extractedSkills?.includes(s))) return false;
-      if (search) {
-        const candidate = resume.candidateId;
-        const term = search.toLowerCase();
-        const matchesName = candidate?.name?.toLowerCase().includes(term);
-        const matchesEmail = candidate?.email?.toLowerCase().includes(term);
-        if (!matchesName && !matchesEmail) return false;
-      }
-      return true;
-    })
-    .map((app: any) => {
-      const resume = app.resumeId;
-      const candidate = resume.candidateId;
-      return {
-        id: candidate._id,
-        applicationId: app._id,
-        name: candidate.name,
-        email: candidate.email,
-        matchScore: app.matchScore ?? 0,
-        experienceYears: resume.extractedExperience ?? 0,
-        skills: (resume.extractedSkills || []).map((s: string) => ({
-          name: s,
-          matched: job.requiredSkills?.includes(s) ?? false,
-        })),
-        resumeUrl: resume.fileUrl,
-        resumeText: resume.parsedText ?? '',
-        status: app.status,
-        appliedAt: app.appliedAt,
-      };
-    });
-
-  mapped = mapped.sort((a: any, b: any) => {
-    const dir = sortOrder === 'asc' ? 1 : -1;
-    if (a[sortField] < b[sortField]) return -1 * dir;
-    if (a[sortField] > b[sortField]) return 1 * dir;
-    return 0;
-  });
-
-  res.json(mapped);
 }
 
 export async function getJobSkillsList(req: Request, res: Response) {
   const { jobId } = req.params;
-  const job = await Job.findById(jobId);
+  const job = await Job.findOne({ _id: jobId, recruiterId: req.user!.id });
   if (!job) return res.status(404).json({ error: 'Job not found' });
-  res.json(job.requiredSkills || []);
+
+  // 4.5 — normalize to match the ML taxonomy's lowercase skill format
+  const normalized = (job.requiredSkills || []).map((s) => s.trim().toLowerCase());
+  res.json(normalized);
 }
 
-export async function updateApplicationStatus(req: Request, res: Response) {
+export const applyToJob = asyncHandler(async (req: Request, res: Response) => {
+  const { id: jobId } = req.params;
+  const { resumeId } = req.body;
+
+  if (!resumeId) return res.status(400).json({ error: 'resumeId is required' });
+
+  const job = await Job.findById(jobId);
+  if (!job || job.status !== 'open') return res.status(404).json({ error: 'Job not found' });
+
+  const resume = await Resume.findOne({ _id: resumeId, candidateId: req.user!.id });
+  if (!resume) return res.status(404).json({ error: 'Resume not found' });
+
+  try {
+    const application = await Application.create({
+      jobId,
+      resumeId,
+      candidateId: req.user!.id,
+      status: 'pending',
+    });
+
+    await enqueueResumeScoring({
+      applicationId: application._id.toString(),
+      resumeId: resume._id.toString(),
+      jobId,
+    });
+
+    res.status(201).json(application);
+  } catch (err: any) {
+    if (err.code === 11000) {
+      return res.status(409).json({ error: 'You already applied to this job' });
+    }
+    throw err;
+  }
+});
+
+export const listApplications = asyncHandler(async (req: Request, res: Response) => {
+  const { id: jobId } = req.params;
+  const job = await Job.findOne({ _id: jobId, recruiterId: req.user!.id });
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const applications = await Application.find({ jobId }).populate('resumeId').populate('candidateId');
+  res.json(applications);
+});
+
+export const myApplications = asyncHandler(async (req: Request, res: Response) => {
+  const applications = await Application.find({ candidateId: req.user!.id })
+    .populate('jobId')
+    .populate('resumeId')
+    .sort({ appliedAt: -1 });
+  res.json(applications);
+});
+
+export const updateApplicationStatus = asyncHandler(async (req: Request, res: Response) => {
   const { applicationId } = req.params;
   const { status } = req.body;
 
-  const valid = ['pending', 'shortlisted', 'rejected', 'hired'];
-  if (!valid.includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
+  if (!ALLOWED_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUSES.join(', ')}` });
   }
 
-  const updated = await Application.findByIdAndUpdate(
-    applicationId,
-    { status },
-    { new: true }
-  );
+  const application = await Application.findById(applicationId).populate('jobId');
+  if (!application) return res.status(404).json({ error: 'Application not found' });
 
-  if (!updated) return res.status(404).json({ error: 'Application not found' });
+  const job = application.jobId as any;
+  if (job.recruiterId.toString() !== req.user!.id) {
+    return res.status(403).json({ error: 'Not your job posting' });
+  }
 
-  // Trigger notification (e.g. email/queue) here
-  res.json(updated);
-}
-
-export async function applyToJob(req: Request, res: Response) {
-  const { id: jobId } = req.params;
-  const userId = (req as any).user.id;
-
-  const job = await Job.findById(jobId);
-  if (!job) return res.status(404).json({ error: 'Job not found' });
-
-  const resume = await Resume.findOne({ candidateId: userId }).sort({ uploadedAt: -1 });
-  if (!resume) return res.status(400).json({ error: 'Upload a resume before applying' });
-
-  const existing = await Application.findOne({ jobId, resumeId: resume._id });
-  if (existing) return res.status(409).json({ error: 'Already applied to this job' });
-
-  const application = await Application.create({ jobId, resumeId: resume._id });
-  res.status(201).json(application);
-}
-
-export async function listApplications(req: Request, res: Response) {
-  const { id: jobId } = req.params;
-
-  const applications = await Application.find({ jobId }).populate({
-    path: 'resumeId',
-    populate: { path: 'candidateId' },
-  });
-
-  res.json(applications);
-}
+  application.status = status;
+  await application.save();
+  res.json(application);
+});

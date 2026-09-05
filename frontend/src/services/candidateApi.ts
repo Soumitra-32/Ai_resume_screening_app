@@ -1,39 +1,59 @@
-import axios from 'axios';
-import { Candidate, RankingFilters } from '../types/candidate';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { apiClient } from './apiClient';
+import type { Candidate, RankingFilters } from '../types/candidate';
 
 export const candidateApi = {
-  async getRankedCandidates(jobId: string, filters: Partial<RankingFilters>, sortField: string, sortOrder: string) {
+  async getRankedCandidates(
+    jobId: string,
+    filters: Partial<RankingFilters>,
+    sortField: string,
+    sortOrder: string
+  ) {
     const params = new URLSearchParams();
-    if (filters.minScore) params.append('minScore', String(filters.minScore));
-    if (filters.minExperience) params.append('minExperience', String(filters.minExperience));
-    if (filters.skills?.length) params.append('skills', filters.skills.join(','));
-    if (filters.status) params.append('status', filters.status);
-    if (filters.search) params.append('search', filters.search);
+
+    if (filters.minScore !== undefined) {
+      params.append('minScore', String(filters.minScore));
+    }
+
+    if (filters.minExperience !== undefined) {
+      params.append('minExperience', String(filters.minExperience));
+    }
+
+    if (filters.skills?.length) {
+      params.append('skills', filters.skills.join(','));
+    }
+
+    if (filters.status) {
+      params.append('status', filters.status);
+    }
+
+    if (filters.search) {
+      params.append('search', filters.search);
+    }
+
     params.append('sortField', sortField);
     params.append('sortOrder', sortOrder);
 
-    const res = await axios.get<Candidate[]>(
-      `${API_BASE}/jobs/${jobId}/candidates?${params.toString()}`,
-      { withCredentials: true }
+    const { data } = await apiClient.get<Candidate[]>(
+      `/candidates/jobs/${jobId}/candidates?${params.toString()}`
     );
-    return res.data;
+
+    return data;
   },
 
   async updateStatus(applicationId: string, status: string) {
-    const res = await axios.patch(
-      `${API_BASE}/applications/${applicationId}/status`,
-      { status },
-      { withCredentials: true }
+    const { data } = await apiClient.patch(
+      `/candidates/applications/${applicationId}/status`,
+      { status }
     );
-    return res.data;
+
+    return data;
   },
 
   async getAvailableSkills(jobId: string) {
-    const res = await axios.get<string[]>(`${API_BASE}/jobs/${jobId}/skills`, {
-      withCredentials: true,
-    });
-    return res.data;
+    const { data } = await apiClient.get<string[]>(
+      `/candidates/jobs/${jobId}/skills`
+    );
+
+    return data;
   },
 };

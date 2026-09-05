@@ -1,24 +1,38 @@
 """
-Combines skill overlap, semantic similarity, and experience match
+Combines required-skill coverage, semantic similarity, and experience match
 into a single weighted match_score.
 """
 
 from typing import Optional, Union
 from app.services.skill_taxonomy import extract_skills_from_text, normalize_skill
 from app.services.embedding_service import compute_semantic_similarity
+from app.services.resume_parser import extract_relevant_text_for_matching
+from app.core.config import settings
 
-# Weights should sum to 1.0 — tune these based on notebook evaluation
-WEIGHT_SKILL_OVERLAP = 0.4
-WEIGHT_SEMANTIC_SIMILARITY = 0.4
-WEIGHT_EXPERIENCE_MATCH = 0.2
+# Weights are sourced from settings (backed by scoring_weights.json when
+# present, produced by the 05_model_evaluation.ipynb notebook) rather than
+# hardcoded here. See load_scoring_weights() in app/core/config.py.
+WEIGHT_SKILL_OVERLAP = settings.WEIGHT_SKILL_OVERLAP
+WEIGHT_SEMANTIC_SIMILARITY = settings.WEIGHT_SEMANTIC_SIMILARITY
+WEIGHT_EXPERIENCE_MATCH = settings.WEIGHT_EXPERIENCE_MATCH
+
+assert abs(
+    WEIGHT_SKILL_OVERLAP + WEIGHT_SEMANTIC_SIMILARITY + WEIGHT_EXPERIENCE_MATCH - 1.0
+) < 1e-6, "Scoring weights must sum to 1.0"
 
 
-def compute_skill_overlap(
+def compute_required_skill_coverage(
         resume_skills: list[str], required_skills: list[str]
 ) -> tuple[float, list[str], list[str]]:
     """
-    Jaccard-style overlap: what fraction of required skills appear in the resume.
-    Returns (overlap_ratio, matched_skills, missing_skills).
+    Required-skill coverage: what fraction of the job's required skills
+    appear in the resume. This is recall against the required-skill set,
+    NOT Jaccard similarity (true Jaccard would be |A∩B| / |A∪B| and would
+    also penalize a resume for having extra skills the job doesn't
+    require — undesirable here, since more skills than required shouldn't
+    lower the score).
+
+    Returns (coverage_ratio, matched_skills, missing_skills).
     """
     if not required_skills:
         return 1.0, [], []  # no requirements specified — don't penalize
@@ -60,21 +74,35 @@ def compute_match_score(
         required_skills: Optional[list[str]] = None,
         resume_experience_years: Optional[Union[int, float]] = None,
         required_experience_years: Optional[Union[int, float]] = None,
+        infer_skills_if_empty: bool = False,  # explicit opt-in instead of silent default
 ) -> dict:
     """
     Main scoring function. Returns a breakdown plus the final weighted score.
+
+    If required_skills is empty/None, it is treated as "no explicit skill
+    requirements" (skill_overlap defaults to 1.0, no penalty) UNLESS
+    infer_skills_if_empty=True is explicitly passed, in which case skills
+    are inferred from the job description instead.
     """
     resume_skills = extract_skills_from_text(resume_text)
 
-    # Fall back to extracting required skills from job description if none provided
-    if not required_skills:
+    inferred = False
+    if not required_skills and infer_skills_if_empty:
         required_skills = extract_skills_from_text(job_description)
+        inferred = True
+    elif not required_skills:
+        required_skills = []
 
-    skill_overlap, matched_skills, missing_skills = compute_skill_overlap(
+    skill_overlap, matched_skills, missing_skills = compute_required_skill_coverage(
         resume_skills, required_skills
     )
 
-    semantic_similarity = compute_semantic_similarity(resume_text, job_description)
+    # Score semantic similarity against a resume excerpt focused on
+    # experience/skills content, not the whole resume — sections like
+    # education, certifications, and hobbies shouldn't drive this score.
+    relevant_resume_text = extract_relevant_text_for_matching(resume_text)
+    semantic_similarity = compute_semantic_similarity(relevant_resume_text, job_description)
+
     experience_match = compute_experience_match(
         resume_experience_years, required_experience_years
     )
@@ -93,4 +121,7 @@ def compute_match_score(
         "resume_skills_found": resume_skills,
         "matched_required_skills": matched_skills,
         "missing_required_skills": missing_skills,
+        "resume_experience_years": resume_experience_years,
+        "required_experience_years": required_experience_years,
+        "skills_inferred_from_description": inferred,
     }

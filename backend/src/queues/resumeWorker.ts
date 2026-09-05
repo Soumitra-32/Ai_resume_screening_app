@@ -34,6 +34,21 @@ await Application.findByIdAndUpdate(applicationId, {
   status: "scored",
 });
 
+// Backfill extractedExperience on the resume if it was missing, using the
+// same figure the scoring engine actually used — keeps parsing and scoring
+// data consistent instead of two disconnected sources of truth.
+if (resume.extractedExperience == null && result.resume_experience_years != null) {
+  await Resume.findByIdAndUpdate(resumeId, {
+    extractedExperience: result.resume_experience_years,
+  });
+}
+
+if (!resume.extractedSkills || resume.extractedSkills.length === 0) {
+  await Resume.findByIdAndUpdate(resumeId, {
+    extractedSkills: result.resume_skills_found,
+  });
+}
+
 // fix #13: there's no result.skills / result.experience — use the real field names
 await Resume.findByIdAndUpdate(resumeId, {
   extractedSkills: result.resume_skills_found,

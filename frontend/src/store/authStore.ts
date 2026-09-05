@@ -9,7 +9,7 @@ interface AuthState {
   login: (payload: LoginPayload) => Promise<User>;
   signup: (payload: SignupPayload) => Promise<User>;
   logout: () => void;
-  hydrate: () => void;
+  hydrate: () => Promise<void>;
 }
 
 function persistSession(user: User, token: string) {
@@ -17,15 +17,47 @@ function persistSession(user: User, token: string) {
   localStorage.setItem('sift_user', JSON.stringify(user));
 }
 
+function clearSession() {
+  localStorage.removeItem('sift_token');
+  localStorage.removeItem('sift_user');
+}
+
+function readStoredUser(): User | null {
+  const raw = localStorage.getItem('sift_user');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as User;
+  } catch {
+    // 7.13 — corrupted localStorage value; treat as logged out rather than crashing
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isInitializing: true,
   error: null,
 
-  hydrate: () => {
-    const raw = localStorage.getItem('sift_user');
+  hydrate: async () => {
+    const storedUser = readStoredUser();
     const token = localStorage.getItem('sift_token');
-    set({ user: raw && token ? (JSON.parse(raw) as User) : null, isInitializing: false });
+
+    if (!storedUser || !token) {
+      clearSession();
+      set({ user: null, isInitializing: false });
+      return;
+    }
+
+    // 7.14 — don't trust localStorage alone; verify the session against
+    // the server so a revoked/expired token or a since-deleted/role-changed
+    // user doesn't silently keep the app in a stale authenticated state.
+    try {
+      const freshUser = await authApi.me();
+      set({ user: freshUser, isInitializing: false });
+    } catch {
+      clearSession();
+      set({ user: null, isInitializing: false });
+    }
   },
 
   login: async (payload) => {
@@ -57,15 +89,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    localStorage.removeItem('sift_token');
-    localStorage.removeItem('sift_user');
+    clearSession();
     set({ user: null });
   },
 }));
 
 function extractErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === 'object' && 'response' in err) {
-    const response = (err as { response?: { data?: { message?: string } } }).response;
+    const response = (err as { response?: { data?: { error?: string; message?: string } } }).response;
+    // 7.15 — backend returns { error: "..." }, not { message: "..." }
+    if (response?.data?.error) return response.data.error;
     if (response?.data?.message) return response.data.message;
   }
   return fallback;

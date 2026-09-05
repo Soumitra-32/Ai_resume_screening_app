@@ -8,12 +8,12 @@ export interface Candidate {
   applicationId: string;
   name: string;
   email: string;
-  matchScore: number;
+  matchScore: number | null;
   experienceYears: number;
   skills: Skill[];
   resumeUrl: string;
   resumeText: string;
-  status: 'pending' | 'shortlisted' | 'rejected' | 'hired';
+  status: 'pending' | 'scored' | 'shortlisted' | 'rejected' | 'hired' | 'failed';
   appliedAt: string;
 }
 
