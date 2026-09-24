@@ -31,4 +31,13 @@ export const resumeApi = {
     const { data } = await apiClient.get<Application[]>('/applications/mine');
     return data;
   },
+
+  /**
+   * Re-queue scoring for an application whose initial enqueue failed
+   * (GET /applications/mine shows it with status "failed").
+   */
+  async retryScoring(applicationId: string): Promise<Application> {
+    const { data } = await apiClient.post<Application>(`/applications/${applicationId}/retry`);
+    return data;
+  },
 };

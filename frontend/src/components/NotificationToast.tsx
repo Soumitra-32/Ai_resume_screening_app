@@ -25,7 +25,7 @@ function Toast({ notification, onDismiss }: { notification: Notification; onDism
   useEffect(() => {
     const timer = setTimeout(() => onDismiss(notification.id), 4000);
     return () => clearTimeout(timer);
-  }, [notification.id]);
+  }, [notification.id, onDismiss]);
 
   const colors = {
     success: 'bg-green-600',

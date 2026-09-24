@@ -7,6 +7,7 @@ export default function MyApplications() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -20,6 +21,24 @@ export default function MyApplications() {
       }
     })();
   }, []);
+
+  async function handleRetry(applicationId: string) {
+    setRetryingId(applicationId);
+    setError(null);
+    try {
+      await resumeApi.retryScoring(applicationId);
+      setApplications((prev) =>
+        prev.map((app) => (app.id === applicationId ? { ...app, status: 'pending' } : app))
+      );
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Could not restart scoring for this application.';
+      setError(message);
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   return (
     <div>
@@ -36,18 +55,41 @@ export default function MyApplications() {
         </div>
       ) : (
         <div className="mt-6 space-y-3">
-          {applications.map((app) => (
-            <div key={app.id} className="card flex items-center justify-between p-4">
-              <div className="flex items-center gap-4">
-                <ScoreBadge score={app.matchScore} size="sm" />
-                <div>
-                  <p className="text-sm text-paper">Application #{app.id.slice(0, 8)}</p>
-                  <p className="text-xs capitalize text-ink-600">{app.status}</p>
+          {applications.map((app) => {
+            // jobId is populated by GET /applications/mine, so show the role
+            // the candidate actually applied to instead of a raw ObjectId.
+            const job = typeof app.jobId === 'string' ? null : app.jobId;
+
+            return (
+              <div
+                key={app.id}
+                className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-center gap-4">
+                  <ScoreBadge score={app.matchScore} size="sm" />
+                  <div>
+                    <p className="text-sm text-paper">{job?.title ?? 'Role no longer available'}</p>
+                    <p className="text-xs capitalize text-ink-600">{app.status}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {app.status === 'failed' && (
+                    <button
+                      className="text-xs text-signal hover:underline disabled:opacity-50"
+                      onClick={() => handleRetry(app.id)}
+                      disabled={retryingId === app.id}
+                    >
+                      {retryingId === app.id ? 'Retrying…' : 'Retry scoring'}
+                    </button>
+                  )}
+                  <p className="text-xs text-ink-600">
+                    {new Date(app.appliedAt).toLocaleDateString()}
+                  </p>
                 </div>
               </div>
-              <p className="text-xs text-ink-600">{new Date(app.appliedAt).toLocaleDateString()}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

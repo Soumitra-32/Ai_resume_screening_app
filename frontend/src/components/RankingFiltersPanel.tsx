@@ -46,16 +46,16 @@ export default function RankingFiltersPanel({
   };
 
   return (
-    <div className="bg-white border rounded-lg p-4 space-y-4 shadow-sm">
-      <div className="flex justify-between items-center">
-        <h3 className="font-semibold text-gray-800">
+    <div className="card space-y-4 p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-display text-sm text-paper">
           Filters
         </h3>
 
         <button
           type="button"
           onClick={reset}
-          className="text-sm text-blue-600 hover:underline"
+          className="text-sm text-signal hover:underline"
         >
           Reset
         </button>
@@ -71,13 +71,13 @@ export default function RankingFiltersPanel({
             search: e.target.value,
           }))
         }
-        className="w-full border rounded px-3 py-2 text-sm"
+        className="field-input"
       />
 
       <div>
-        <label className="text-sm text-gray-600 flex justify-between">
+        <label className="field-label flex justify-between">
           <span>Min Match Score</span>
-          <span>{Math.round(filters.minScore * 100)}%</span>
+          <span className="font-mono">{Math.round(filters.minScore * 100)}%</span>
         </label>
 
         <input
@@ -92,14 +92,14 @@ export default function RankingFiltersPanel({
               minScore: parseFloat(e.target.value),
             }))
           }
-          className="w-full"
+          className="w-full accent-signal"
         />
       </div>
 
       <div>
         <label
           htmlFor="min-experience"
-          className="text-sm text-gray-600"
+          className="field-label"
         >
           Min Experience (years)
         </label>
@@ -115,14 +115,14 @@ export default function RankingFiltersPanel({
               minExperience: Number(e.target.value),
             }))
           }
-          className="w-full border rounded px-3 py-2 text-sm mt-1"
+          className="field-input"
         />
       </div>
 
       <div>
         <label
           htmlFor="candidate-status"
-          className="text-sm text-gray-600"
+          className="field-label"
         >
           Status
         </label>
@@ -136,7 +136,7 @@ export default function RankingFiltersPanel({
               status: e.target.value,
             }))
           }
-          className="w-full border rounded px-3 py-2 text-sm mt-1"
+          className="field-input"
         >
           <option value="">All</option>
           <option value="pending">Pending</option>
@@ -148,20 +148,20 @@ export default function RankingFiltersPanel({
       </div>
 
       <div>
-        <label className="text-sm text-gray-600 mb-1 block">
+        <label className="field-label mb-1 block">
           Required Skills
         </label>
 
-        <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+        <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
           {availableSkills.map((skill) => (
             <button
               type="button"
               key={skill}
               onClick={() => toggleSkill(skill)}
-              className={`text-xs px-2 py-1 rounded-full border ${
+              className={`rounded-sm border px-2 py-1 font-mono text-[11px] transition ${
                 filters.skills.includes(skill)
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-gray-50 text-gray-700 border-gray-300'
+                  ? 'border-signal bg-signal/15 text-signal'
+                  : 'border-line text-ink-600 hover:text-paper'
               }`}
             >
               {skill}

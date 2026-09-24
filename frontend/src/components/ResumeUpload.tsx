@@ -10,7 +10,29 @@ interface ResumeUploadProps {
 
 const ACCEPTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
-export default function ResumeUpload({ onUploaded }: ResumeUploadProps) {
+interface BackendErrorShape {
+  response?: {
+    status?: number;
+    data?: { error?: unknown };
+  };
+}
+
+function extractUploadErrorMessage(err: unknown): string {
+  const shaped = err as BackendErrorShape | null | undefined;
+  const backendMessage = shaped?.response?.data?.error;
+  if (typeof backendMessage === 'string' && backendMessage.trim()) {
+    return backendMessage;
+  }
+  if (shaped?.response?.status === 502) {
+    return 'We could not process this resume. Please check the file and try again.';
+  }
+  if (shaped?.response?.status === 413) {
+    return 'File is too large.';
+  }
+  return 'Upload failed. Try again.';
+}
+
+export default function ResumeUpload({ onUploaded, jobId }: ResumeUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -33,30 +55,18 @@ export default function ResumeUpload({ onUploaded }: ResumeUploadProps) {
     setFileName(file.name);
     setProgress(0);
     try {
-      const resume = await resumeApi.upload(file, setProgress);
+      // jobId is forwarded so the server can create the application in the
+      // same request as the upload; without it the caller applies separately.
+      const resume = await resumeApi.upload(file, setProgress, jobId);
       onUploaded(resume);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(extractUploadErrorMessage(err));
     } finally {
       setProgress(null);
     }
   },
-  [onUploaded]
+  [onUploaded, jobId]
 );
-
-function extractUploadErrorMessage(err: any): string {
-  const backendMessage = err?.response?.data?.error;
-  if (typeof backendMessage === 'string' && backendMessage.trim()) {
-    return backendMessage;
-  }
-  if (err?.response?.status === 502) {
-    return 'We could not process this resume. Please check the file and try again.';
-  }
-  if (err?.response?.status === 413) {
-    return 'File is too large.';
-  }
-  return 'Upload failed. Try again.';
-}
 
   function onDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();

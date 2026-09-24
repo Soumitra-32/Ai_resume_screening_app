@@ -8,12 +8,19 @@ interface AuthState {
   error: string | null;
   login: (payload: LoginPayload) => Promise<User>;
   signup: (payload: SignupPayload) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
   hydrate: () => Promise<void>;
 }
 
-function persistSession(user: User, token: string) {
-  localStorage.setItem('sift_token', token);
+function persistSession(user: User, token: string | undefined) {
+  if (token) {
+    localStorage.setItem('sift_token', token);
+  } else {
+    // `localStorage.setItem(key, undefined)` stores the *string* "undefined",
+    // which then got sent as `Authorization: Bearer undefined` on every
+    // request. Only ever persist a real token.
+    localStorage.removeItem('sift_token');
+  }
   localStorage.setItem('sift_user', JSON.stringify(user));
 }
 
@@ -42,7 +49,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     const storedUser = readStoredUser();
     const token = localStorage.getItem('sift_token');
 
-    if (!storedUser || !token) {
+    // A session can be restored from either half: the httpOnly cookie is the
+    // primary mechanism and is invisible to JS, so requiring a localStorage
+    // token here would log cookie-only sessions out on every reload.
+    if (!storedUser && !token) {
       clearSession();
       set({ user: null, isInitializing: false });
       return;
@@ -70,7 +80,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err) {
       const message = extractErrorMessage(err, 'Could not sign in. Check your email and password.');
       set({ error: message });
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     }
   },
 
@@ -84,11 +94,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err) {
       const message = extractErrorMessage(err, 'Could not create your account.');
       set({ error: message });
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    // Clearing the httpOnly cookie requires the server — without this call the
+    // cookie stayed valid for its full 7 days and /auth/me would quietly sign
+    // the user back in on the next reload.
+    try {
+      await authApi.logout();
+    } catch {
+      // Already logged out server-side, or offline: clearing locally is still
+      // the right outcome for the user.
+    }
     clearSession();
     set({ user: null });
   },

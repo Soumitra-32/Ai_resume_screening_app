@@ -56,12 +56,27 @@ export default function ApplyPage() {
     try {
       await resumeApi.applyToJob(jobId, resume.id);
       setHasApplied(true);
-    } catch (err: any) {
-      if (err?.response?.status === 409) {
-        setHasApplied(true);
-      } else {
-        setError(err?.response?.data?.error ?? 'Could not submit your application. Try again.');
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'response' in err &&
+        typeof (err as { response?: { status?: number } }).response === 'object'
+      ) {
+        const status = (err as { response?: { status?: number } }).response?.status;
+        if (status === 409) {
+          setHasApplied(true);
+          return;
+        }
       }
+      const message =
+        typeof err === 'object' &&
+        err !== null &&
+        'response' in err &&
+        typeof (err as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+          ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error as string)
+          : 'Could not submit your application. Try again.';
+      setError(message);
     } finally {
       setIsApplying(false);
     }
@@ -120,7 +135,7 @@ export default function ApplyPage() {
               </button>
             </div>
           ) : (
-                 <ResumeUpload jobId={jobId} onUploaded={(r) => { setResume(r); setHasApplied(true); }} />
+            <ResumeUpload onUploaded={setResume} />
           )}
 
           {error && <p className="text-sm text-flag">{error}</p>}

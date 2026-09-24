@@ -14,6 +14,34 @@ import {
 } from '../../types/candidate';
 import type { ApplicationStatus } from '../../types';
 
+function SortHeader({
+  field,
+  label,
+  sortField,
+  sortOrder,
+  onToggle,
+}: {
+  field: SortField;
+  label: string;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onToggle: (field: SortField) => void;
+}) {
+  return (
+    <th
+      onClick={() => onToggle(field)}
+      className="cursor-pointer select-none px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600 hover:bg-ink-800/60"
+    >
+      {label}{' '}
+      {sortField === field
+        ? sortOrder === 'asc'
+          ? '↑'
+          : '↓'
+        : ''}
+    </th>
+  );
+}
+
 export default function CandidateRanking() {
   const { jobId } = useParams<{ jobId: string }>();
 
@@ -48,14 +76,26 @@ export default function CandidateRanking() {
   useEffect(() => {
     if (!jobId) return;
 
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-filter-change pattern: show spinner while refetching
     setLoading(true);
 
     candidateApi
       .getRankedCandidates(jobId, filters, sortField, sortOrder)
-      .then(setCandidates)
-      .catch(() => notify('Failed to load candidates', 'error'))
-      .finally(() => setLoading(false));
-  }, [jobId, filters, sortField, sortOrder]);
+      .then((rows) => {
+        if (!cancelled) setCandidates(rows);
+      })
+      .catch(() => {
+        if (!cancelled) notify('Failed to load candidates', 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, filters, sortField, sortOrder, notify]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -87,28 +127,8 @@ export default function CandidateRanking() {
     }
   };
 
-  const SortHeader = ({
-    field,
-    label,
-  }: {
-    field: SortField;
-    label: string;
-  }) => (
-    <th
-      onClick={() => toggleSort(field)}
-      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer select-none hover:bg-gray-100"
-    >
-      {label}{' '}
-      {sortField === field
-        ? sortOrder === 'asc'
-          ? '↑'
-          : '↓'
-        : ''}
-    </th>
-  );
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-6">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
       <div className="md:col-span-1">
         <RankingFiltersPanel
           availableSkills={availableSkills}
@@ -117,64 +137,73 @@ export default function CandidateRanking() {
       </div>
 
       <div className="md:col-span-3">
-        <h1 className="text-xl font-bold mb-4">
+        <h1 className="mb-4 font-display text-xl text-paper">
           Candidate Ranking
         </h1>
 
         {loading ? (
-          <p className="text-gray-500">
+          <p className="text-sm text-ink-600">
             Loading candidates...
           </p>
         ) : candidates.length === 0 ? (
-          <p className="text-gray-500">
+          <p className="text-sm text-ink-600">
             No candidates match the current filters.
           </p>
         ) : (
-          <div className="overflow-x-auto border rounded-lg">
-            <table className="min-w-full divide-y divide-gray-200 bg-white">
-              <thead className="bg-gray-50">
+          <div className="card overflow-x-auto">
+            <table className="min-w-full divide-y divide-line">
+              <thead className="bg-ink-800">
                 <tr>
                   <SortHeader
                     field="name"
                     label="Candidate"
+                    sortField={sortField}
+                    sortOrder={sortOrder}
+                    onToggle={toggleSort}
                   />
 
                   <SortHeader
                     field="matchScore"
                     label="Score"
+                    sortField={sortField}
+                    sortOrder={sortOrder}
+                    onToggle={toggleSort}
                   />
 
                   <SortHeader
                     field="experienceYears"
                     label="Experience"
+                    sortField={sortField}
+                    sortOrder={sortOrder}
+                    onToggle={toggleSort}
                   />
 
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">
                     Skills
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">
                     Status
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-ink-600">
                     Actions
                   </th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {candidates.map((c) => (
                   <tr
                     key={c.applicationId}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-ink-800/40"
                   >
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">
+                      <div className="font-medium text-paper">
                         {c.name}
                       </div>
 
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-ink-600">
                         {c.email}
                       </div>
                     </td>
@@ -183,19 +212,19 @@ export default function CandidateRanking() {
                       <ScoreBadge score={c.matchScore} />
                     </td>
 
-                    <td className="px-4 py-3 text-sm text-gray-700">
+                    <td className="px-4 py-3 text-sm text-paper/80">
                       {c.experienceYears} yrs
                     </td>
 
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                      <div className="flex max-w-[200px] flex-wrap gap-1">
                         {c.skills
                           .filter((s) => s.matched)
                           .slice(0, 4)
                           .map((s) => (
                             <span
                               key={s.name}
-                              className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full"
+                              className="rounded-sm border border-signal/40 bg-signal/10 px-2 py-0.5 font-mono text-[11px] text-signal"
                             >
                               {s.name}
                             </span>
@@ -212,7 +241,7 @@ export default function CandidateRanking() {
                             e.target.value as ApplicationStatus
                           )
                         }
-                        className="text-xs border rounded px-2 py-1"
+                        className="field-input w-auto py-1 text-xs"
                       >
                         <option value="pending">
                           Pending
@@ -241,7 +270,7 @@ export default function CandidateRanking() {
                         onClick={() =>
                           setPreviewCandidate(c)
                         }
-                        className="text-blue-600 text-sm hover:underline"
+                        className="text-sm text-signal hover:underline"
                       >
                         View Resume
                       </button>

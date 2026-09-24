@@ -41,24 +41,26 @@ async function handleDownload(resumeUrl: string) {
 
 export default function ResumePreviewModal({ candidate, onClose }: Props) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl">
-        <div className="flex justify-between items-center p-4 border-b">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="card flex max-h-[85vh] w-full max-w-2xl flex-col shadow-xl">
+        <div className="flex items-center justify-between border-b border-line p-4">
           <div>
-            <h2 className="font-semibold text-lg">{candidate.name}</h2>
-            <p className="text-sm text-gray-500">{candidate.email}</p>
+            <h2 className="font-display text-lg text-paper">{candidate.name}</h2>
+            <p className="text-sm text-ink-600">{candidate.email}</p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-xl">
+          <button onClick={onClose} className="text-xl text-ink-600 hover:text-paper">
             &times;
           </button>
         </div>
 
-        <div className="p-4 flex flex-wrap gap-2 border-b">
+        <div className="flex flex-wrap gap-2 border-b border-line p-4">
           {candidate.skills.map((skill) => (
             <span
               key={skill.name}
-              className={`text-xs px-2 py-1 rounded-full ${
-                skill.matched ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
+              className={`rounded-sm border px-2 py-1 font-mono text-[11px] ${
+                skill.matched
+                  ? 'border-signal/40 bg-signal/10 text-signal'
+                  : 'border-line text-ink-600'
               }`}
             >
               {skill.name}
@@ -66,14 +68,14 @@ export default function ResumePreviewModal({ candidate, onClose }: Props) {
           ))}
         </div>
 
-        <div className="p-4 overflow-y-auto whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+        <div className="overflow-y-auto whitespace-pre-wrap p-4 text-sm leading-relaxed text-paper/80">
           {highlightSkills(candidate.resumeText, candidate.skills)}
         </div>
 
-        <div className="p-4 border-t flex justify-between items-center">
+        <div className="flex items-center justify-between border-t border-line p-4">
           <button
             onClick={() => handleDownload(candidate.resumeUrl)}
-            className="text-blue-600 text-sm hover:underline"
+            className="text-sm text-signal hover:underline"
           >
             Download Original Resume
           </button>

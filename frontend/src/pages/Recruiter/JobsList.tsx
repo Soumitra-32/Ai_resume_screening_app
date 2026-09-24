@@ -11,21 +11,27 @@ export default function JobsList() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadJobs();
-  }, []);
+    let cancelled = false;
 
-  async function loadJobs() {
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      const data = await jobApi.list();
-      setJobs(data);
-    } catch {
-      setLoadError('Could not load your jobs.');
-    } finally {
-      setIsLoading(false);
+    async function loadJobs() {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const data = await jobApi.list();
+        if (!cancelled) setJobs(data);
+      } catch {
+        if (!cancelled) setLoadError('Could not load your jobs.');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     }
-  }
+
+    void loadJobs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleCreate(payload: JobInput) {
     const job = await jobApi.create(payload);

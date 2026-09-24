@@ -2,40 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    # "development" is the branch this repository actually works on and "main"
+    # is the release branch. The previous config listened on "main"/"develop",
+    # and since no "develop" branch exists CI never ran at all.
+    branches: [main, development]
   pull_request:
-    branches: [main, develop]
+    branches: [main, development]
+  workflow_dispatch:
 
 jobs:
-  backend-tests:
+  backend-build:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
-    services:
-      mongo:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "echo 'db.runCommand(\"ping\").ok' | mongosh localhost:27017/test --quiet"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      MONGO_URI: mongodb://localhost:27017/resume_screener_test
-      REDIS_URL: redis://localhost:6379
-      JWT_SECRET: test_secret
-      ML_SERVICE_URL: http://localhost:8000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,8 +24,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - run: npm run build --if-present
-
+      # `npm run build` is `tsc`, so this typechecks the whole service as well.
+      # There is no backend integration suite yet (it would need Mongo + Redis);
+      # see the Testing section of README.md.
+      - name: Typecheck and build
+        run: npm run build
 
   ml-service-tests:
     runs-on: ubuntu-latest
@@ -58,7 +41,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-      - run: pip install -r requirements.txt
+          cache-dependency-path: ML/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Run API tests
+        run: python -m pytest -q
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -73,11 +59,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
 
   docker-build-check:
     runs-on: ubuntu-latest
-    needs: [backend-tests, ml-service-tests, frontend-build]
+    needs: [backend-build, ml-service-tests, frontend-build]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
