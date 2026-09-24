@@ -14,7 +14,14 @@ const ALLOWED_SORT_FIELDS: Record<string, string> = {
 
 const ALLOWED_STATUSES = ['pending', 'scored', 'shortlisted', 'rejected', 'hired', 'failed'];
 
-export async function getRankedCandidates(req: Request, res: Response) {
+// User-supplied search text is interpolated into a MongoDB $regex, so escape
+// metacharacters first — an unbalanced "(" would otherwise make the whole
+// aggregation throw and (before it was wrapped in asyncHandler) hang the request.
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export const getRankedCandidates = asyncHandler(async (req: Request, res: Response) => {
   const { jobId } = req.params;
   const {
     minScore = '0',
@@ -63,6 +70,49 @@ export async function getRankedCandidates(req: Request, res: Response) {
   const job = await Job.findOne({ _id: jobId, recruiterId: req.user!.id });
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
+  // Every optional filter becomes its own element of a top-level $and. Putting
+  // them all in one object literal meant the search $or silently overwrote the
+  // min-score $or — so typing a search term stopped filtering by score.
+  const andConditions: Record<string, unknown>[] = [
+    {
+      // Unscored applications are always kept: hiding them behind a score
+      // filter would make brand-new applications invisible to the recruiter.
+      $or: [
+        { matchScore: { $gte: parsedMinScore } },
+        { matchScore: { $exists: false } },
+        { matchScore: null },
+      ],
+    },
+  ];
+
+  // Only filter on experience when the recruiter explicitly asks for more than
+  // 0 years. `{ $gte: 0 }` does not match documents where the field is missing
+  // (MongoDB compares a missing field as null, which sorts below every number),
+  // so the old unconditional filter hid every resume whose experience the
+  // parser could not detect — with the default minExperience of 0.
+  if (parsedMinExperience > 0) {
+    andConditions.push({
+      'resumeInfo.extractedExperience': { $gte: parsedMinExperience },
+    });
+  }
+
+  if (search) {
+    const safeSearch = escapeRegex(search);
+    andConditions.push({
+      $or: [
+        { 'candidateInfo.name': { $regex: safeSearch, $options: 'i' } },
+        { 'candidateInfo.email': { $regex: safeSearch, $options: 'i' } },
+      ],
+    });
+  }
+
+  const filterStage: Record<string, unknown> = { $and: andConditions };
+  if (status) filterStage.status = status;
+  if (skillList.length) {
+    // requires extractedSkills to be stored normalized/lowercase — see 4.5
+    filterStage['resumeInfo.extractedSkills'] = { $in: skillList };
+  }
+
   // 4.7 — move filtering/sorting/pagination into MongoDB via aggregation
   const pipeline: any[] = [
     { $match: { jobId: job._id } },
@@ -84,28 +134,7 @@ export async function getRankedCandidates(req: Request, res: Response) {
       },
     },
     { $unwind: '$candidateInfo' }, // 4.8 — inner join drops applications with a missing candidate
-    {
-      $match: {
-        $or: [
-          { matchScore: { $gte: parsedMinScore } },
-          { matchScore: { $exists: false } },
-          { matchScore: null },
-        ],
-        'resumeInfo.extractedExperience': { $gte: parsedMinExperience },
-        ...(status ? { status } : {}),
-        ...(skillList.length
-          ? { 'resumeInfo.extractedSkills': { $in: skillList } } // requires extractedSkills to be stored normalized/lowercase — see 4.5
-          : {}),
-        ...(search
-          ? {
-              $or: [
-                { 'candidateInfo.name': { $regex: search, $options: 'i' } },
-                { 'candidateInfo.email': { $regex: search, $options: 'i' } },
-              ],
-            }
-          : {}),
-      },
-    },
+    { $match: filterStage },
     { $sort: { [sortKey]: sortOrderNormalized } },
     {
       $facet: {
@@ -132,7 +161,9 @@ export async function getRankedCandidates(req: Request, res: Response) {
       name: s,
       matched: requiredSkillSet.has(s.toLowerCase()),
     })),
-    resumeUrl: `/api/resumes/${app.resumeInfo._id}/file`,
+    // Relative to the API client's baseURL (/api) — an extra /api prefix here
+    // produced /api/api/resumes/<id>/file and a 404 on download.
+    resumeUrl: `/resumes/${app.resumeInfo._id}/file`,
     resumeText: app.resumeInfo.parsedText ?? '',
     status: app.status,
     appliedAt: app.appliedAt,
@@ -142,9 +173,9 @@ export async function getRankedCandidates(req: Request, res: Response) {
     data: mapped,
     pagination: { page: pageNum, limit: pageSize, total, totalPages: Math.ceil(total / pageSize) },
   });
-}
+});
 
-export async function getJobSkillsList(req: Request, res: Response) {
+export const getJobSkillsList = asyncHandler(async (req: Request, res: Response) => {
   const { jobId } = req.params;
   const job = await Job.findOne({ _id: jobId, recruiterId: req.user!.id });
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -152,65 +183,84 @@ export async function getJobSkillsList(req: Request, res: Response) {
   // 4.5 — normalize to match the ML taxonomy's lowercase skill format
   const normalized = (job.requiredSkills || []).map((s) => s.trim().toLowerCase());
   res.json(normalized);
-}
+});
 
+// POST /jobs/:id/apply — candidate applies to a job with an existing resume
 export const applyToJob = asyncHandler(async (req: Request, res: Response) => {
   const { id: jobId } = req.params;
-  const { resumeId } = req.body;
+  const { resumeId } = req.body as { resumeId?: string };
 
   if (!resumeId) return res.status(400).json({ error: 'resumeId is required' });
 
   const job = await Job.findById(jobId);
-  if (!job || job.status !== 'open') return res.status(404).json({ error: 'Job not found' });
+  if (!job || job.status !== 'open') {
+    return res.status(404).json({ error: 'Job not found' });
+  }
 
   const resume = await Resume.findOne({ _id: resumeId, candidateId: req.user!.id });
   if (!resume) return res.status(404).json({ error: 'Resume not found' });
 
+  let application;
   try {
-    const application = await Application.create({
-      jobId,
-      resumeId,
+    application = await Application.create({
+      jobId: job._id,
+      resumeId: resume._id,
       candidateId: req.user!.id,
       status: 'pending',
     });
-
-    await enqueueResumeScoring({
-      applicationId: application._id.toString(),
-      resumeId: resume._id.toString(),
-      jobId,
-    });
-
-    res.status(201).json(application);
   } catch (err: any) {
     if (err.code === 11000) {
       return res.status(409).json({ error: 'You already applied to this job' });
     }
     throw err;
   }
+
+  try {
+    await enqueueResumeScoring({
+      applicationId: application._id.toString(),
+      resumeId: resume._id.toString(),
+      jobId: job._id.toString(),
+    });
+  } catch (err) {
+    console.error('[applyToJob] Failed to enqueue scoring job:', err);
+    application.status = 'failed';
+    await application.save();
+  }
+
+  res.status(201).json(application);
 });
 
+// GET /jobs/:id/applications — recruiter views all applications for their job
 export const listApplications = asyncHandler(async (req: Request, res: Response) => {
   const { id: jobId } = req.params;
+
   const job = await Job.findOne({ _id: jobId, recruiterId: req.user!.id });
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
-  const applications = await Application.find({ jobId }).populate('resumeId').populate('candidateId');
+  const applications = await Application.find({ jobId: job._id })
+    .populate('resumeId')
+    .populate('candidateId')
+    .sort({ appliedAt: -1 });
+
   res.json(applications);
 });
 
+// GET /applications/mine — candidate views their own applications
 export const myApplications = asyncHandler(async (req: Request, res: Response) => {
   const applications = await Application.find({ candidateId: req.user!.id })
     .populate('jobId')
     .populate('resumeId')
     .sort({ appliedAt: -1 });
+
   res.json(applications);
 });
 
+// PATCH /applications/:applicationId/status — recruiter updates an application's status
 export const updateApplicationStatus = asyncHandler(async (req: Request, res: Response) => {
   const { applicationId } = req.params;
-  const { status } = req.body;
+  const { status } = req.body as { status?: string };
 
-  if (!ALLOWED_STATUSES.includes(status)) {
+  if (!status || !ALLOWED_STATUSES.includes(status)) {
     return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUSES.join(', ')}` });
   }
 
@@ -218,11 +268,45 @@ export const updateApplicationStatus = asyncHandler(async (req: Request, res: Re
   if (!application) return res.status(404).json({ error: 'Application not found' });
 
   const job = application.jobId as any;
-  if (job.recruiterId.toString() !== req.user!.id) {
-    return res.status(403).json({ error: 'Not your job posting' });
+  if (!job || job.recruiterId.toString() !== req.user!.id) {
+    return res.status(403).json({ error: 'Forbidden' });
   }
 
   application.status = status;
   await application.save();
+
+  res.json(application);
+});
+
+// POST /applications/:applicationId/retry — re-queue scoring for an
+// application whose enqueue attempt failed (Redis/queue outage). Without this
+// a "failed" application was permanently unscoreable: the queue's own retries
+// only cover jobs that made it into Redis in the first place.
+export const retryApplication = asyncHandler(async (req: Request, res: Response) => {
+  const { applicationId } = req.params;
+
+  const application = await Application.findById(applicationId);
+  if (!application) return res.status(404).json({ error: 'Application not found' });
+  if (application.candidateId.toString() !== req.user!.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (application.status !== 'failed') {
+    return res.status(400).json({ error: 'Only applications with status "failed" can be retried' });
+  }
+
+  try {
+    await enqueueResumeScoring({
+      applicationId: application._id.toString(),
+      resumeId: application.resumeId.toString(),
+      jobId: application.jobId.toString(),
+    });
+  } catch (err) {
+    console.error('[retryApplication] Failed to re-enqueue scoring job:', err);
+    return res.status(503).json({ error: 'Scoring queue is unavailable. Please try again shortly.' });
+  }
+
+  application.status = 'pending';
+  await application.save();
+
   res.json(application);
 });
