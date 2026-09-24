@@ -14,3 +14,6 @@ uploads/
 mongo-data/
 .ipynb_checkpoints/
 .idea/
+# Emitted by `tsc -b`
+*.tsbuildinfo
+.pytest_cache/
