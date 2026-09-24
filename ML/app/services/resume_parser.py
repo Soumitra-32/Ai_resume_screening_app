@@ -1,6 +1,6 @@
 import re
 import io
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF (the legacy `fitz` alias is deprecated)
 import docx
 from typing import Optional, Tuple, List
 
@@ -66,7 +66,7 @@ TITLE_CASE_WORD = re.compile(r"^[A-Z][a-zA-Z'.-]*$")
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """Extract raw text from a PDF using PyMuPDF."""
     text_parts = []
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+    with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
         for page in doc:
             text_parts.append(page.get_text())
     return "\n".join(text_parts).strip()

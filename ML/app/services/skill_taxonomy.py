@@ -121,8 +121,17 @@ def extract_skills_from_text(text: str) -> list[str]:
         # Escape special regex characters (like C++, .NET, CI/CD) safely
         escaped_skill = re.escape(skill)
 
-        # Match boundaries considering letters, digits, and specific skill symbols (+, #, .)
-        pattern = rf"(?<![a-zA-Z0-9+#.]){escaped_skill}(?![a-zA-Z0-9+#.])"
+        # Leading boundary: the match must not be the tail of a longer token
+        # (e.g. "python" inside "micropython").
+        # Trailing boundary: same, except that a "." only disqualifies the
+        # match when it is followed by another word character — i.e. a dotted
+        # continuation such as "node.js". A sentence-ending period must still
+        # count, otherwise "...and mongodb." never matched "mongodb" and the
+        # skill was reported as missing from the resume.
+        pattern = (
+            rf"(?<![a-zA-Z0-9+#.]){escaped_skill}"
+            rf"(?![a-zA-Z0-9+#])(?![.][a-zA-Z0-9])"
+        )
 
         if re.search(pattern, text_lower):
             found.add(skill)

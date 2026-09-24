@@ -36,3 +36,7 @@ class ScoreResponse(BaseModel):
     missing_required_skills: List[str]
     resume_experience_years: Optional[float] = None       # echo back what was scored against
     required_experience_years: Optional[float] = None
+    # True when the caller asked for inference and the required skills were
+    # derived from the job description instead of being supplied. Declared here
+    # so the value isn't silently dropped from the response payload.
+    skills_inferred_from_description: bool = False
