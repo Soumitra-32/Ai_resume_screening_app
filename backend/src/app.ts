@@ -10,6 +10,10 @@ import { errorHandler } from "./middlewares/errorHandler";
 
 const app = express();
 
+// Behind nginx / a load balancer, trust X-Forwarded-* so req.secure and the
+// client IP are accurate (used to decide the auth cookie's `Secure` flag).
+app.set("trust proxy", 1);
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
@@ -33,6 +37,10 @@ app.use("/api/jobs", jobRoutes);
 app.use("/api/resumes", resumeRoutes);
 app.use("/api/candidates", candidateRoutes);
 app.use("/api/applications", applicationRoutes);
+
+// Unknown routes should answer with JSON too — the API's clients all speak
+// JSON and an HTML error page is useless to them.
+app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
 app.use(errorHandler);
 
