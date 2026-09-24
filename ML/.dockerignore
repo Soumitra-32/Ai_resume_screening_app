@@ -1,0 +1,14 @@
+# Keep the build context (and the image) small and platform-correct.
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.log
+
+# Only the notebooks read the datasets, and they are ~100MB, so they are not
+# shipped in the service image. Excluding tests/ keeps the runtime image lean;
+# CI runs them straight from the source tree.
+data/
+notebooks/
+tests/
