@@ -21,6 +21,8 @@ export const uploadResume = asyncHandler(async (req: Request, res: Response) => 
       parsed = await parseResume(uploadedPath, req.file.originalname);
     } catch (err) {
       console.error("[uploadResume] parseResume failed:", err);
+      // Nothing references this file yet, so don't leave it orphaned on disk.
+      await fs.unlink(uploadedPath).catch(() => {});
       return res.status(502).json({ error: "Could not process this resume. Please try again." });
     }
 

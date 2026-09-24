@@ -1,7 +1,7 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { fromFile } from "file-type";
+import { fromFile as fileTypeFromFile } from "file-type";
 import { env } from "../config/env";
 
 if (!fs.existsSync(env.uploadDir)) {
@@ -19,8 +19,16 @@ const storage = multer.diskStorage({
 function extFilter(_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) {
   const allowed = [".pdf", ".docx"];
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) cb(null, true);
-  else cb(new Error("Only PDF or DOCX files are allowed"));
+  if (allowed.includes(ext)) {
+    cb(null, true);
+    return;
+  }
+
+  // Carry an HTTP status so errorHandler answers 400 instead of leaking a
+  // generic 500 ("Internal server error") for a bad extension.
+  const err = new Error("Only PDF or DOCX files are allowed") as Error & { status?: number };
+  err.status = 400;
+  cb(err);
 }
 
 export const upload = multer({
@@ -42,7 +50,7 @@ export async function verifyFileContent(req: any, res: any, next: any) {
   if (!req.file) return next();
 
   try {
-    const type = await fromFile(req.file.path);
+    const type = await fileTypeFromFile(req.file.path);
     if (!type || !ALLOWED_MIME.has(type.mime)) {
       await fs.promises.unlink(req.file.path).catch(() => {});
       return res.status(400).json({ error: "Uploaded file is not a valid PDF or DOCX" });

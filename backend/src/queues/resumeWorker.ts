@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "../config/redis";
 import { ResumeScoreJobData } from "./resumeQueue";
-import { Resume } from "../models/Resume";
+import { Resume, type IResume } from "../models/Resume";
 import { Job as JobModel } from "../models/Job";
 import { Application } from "../models/Application";
 import { scoreResume } from "../services/mlServiceClient";
@@ -22,39 +22,34 @@ async function processResumeScoring(job: Job<ResumeScoreJobData>) {
   }
 
   const result = await scoreResume({
-  resume_text: resume.parsedText,
-  job_description: jobPosting.description,
-  required_skills: jobPosting.requiredSkills ?? [],
-  resume_experience_years: resume.extractedExperience ?? undefined,
-  required_experience_years: jobPosting.experienceRequired ?? undefined, // fix #12
-});
-
-await Application.findByIdAndUpdate(applicationId, {
-  matchScore: result.match_score,
-  status: "scored",
-});
-
-// Backfill extractedExperience on the resume if it was missing, using the
-// same figure the scoring engine actually used — keeps parsing and scoring
-// data consistent instead of two disconnected sources of truth.
-if (resume.extractedExperience == null && result.resume_experience_years != null) {
-  await Resume.findByIdAndUpdate(resumeId, {
-    extractedExperience: result.resume_experience_years,
+    resume_text: resume.parsedText,
+    job_description: jobPosting.description,
+    required_skills: jobPosting.requiredSkills ?? [],
+    resume_experience_years: resume.extractedExperience ?? undefined,
+    required_experience_years: jobPosting.experienceRequired ?? undefined,
   });
-}
 
-if (!resume.extractedSkills || resume.extractedSkills.length === 0) {
-  await Resume.findByIdAndUpdate(resumeId, {
-    extractedSkills: result.resume_skills_found,
+  await Application.findByIdAndUpdate(applicationId, {
+    matchScore: result.match_score,
+    status: "scored",
   });
-}
 
-// fix #13: there's no result.skills / result.experience — use the real field names
-await Resume.findByIdAndUpdate(resumeId, {
-  extractedSkills: result.resume_skills_found,
-  // ScoreResponse has no total "years" figure, only experience_match (a 0-1 ratio).
-  // Keep whatever extractedExperience Resume already had — it isn't returned by scoring.
-});
+  // Backfill the resume-level fields the scoring engine derived, but only when
+  // they're missing — the parser is the better source of truth when it
+  // succeeded. Collected into a single update instead of writing the same
+  // extractedSkills value two or three times.
+  const backfill: Partial<Pick<IResume, "extractedExperience" | "extractedSkills">> = {};
+
+  if (resume.extractedExperience == null && result.resume_experience_years != null) {
+    backfill.extractedExperience = result.resume_experience_years;
+  }
+  if (!resume.extractedSkills || resume.extractedSkills.length === 0) {
+    backfill.extractedSkills = result.resume_skills_found;
+  }
+  if (Object.keys(backfill).length > 0) {
+    await Resume.findByIdAndUpdate(resumeId, backfill);
+  }
+
   return result;
 }
 

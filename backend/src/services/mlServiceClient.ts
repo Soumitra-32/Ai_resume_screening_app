@@ -47,7 +47,7 @@ export async function parseResume(filePath: string, originalName: string): Promi
 export interface ScoreResumeRequest {
   resume_text: string;
   job_description: string;
-  required_skills: string[];
+  required_skills?: string[];
   resume_experience_years?: number;
   required_experience_years?: number;
 }
@@ -62,6 +62,9 @@ export interface ScoreResumeResponse {
   missing_required_skills: string[];
   resume_experience_years: number | null;
   required_experience_years: number | null;
+  // Present on every response; true when required_skills was empty and the
+  // service inferred them from the job description instead.
+  skills_inferred_from_description?: boolean;
 }
 
 export async function scoreResume(
