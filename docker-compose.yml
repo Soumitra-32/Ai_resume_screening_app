@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mongo:
     image: mongo:7
@@ -21,6 +19,9 @@ services:
     image: redis:7-alpine
     container_name: resume_screener_redis
     restart: unless-stopped
+    # A redis-data volume was declared but nothing was ever persisted to it,
+    # so queued scoring jobs were lost on every restart.
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
     healthcheck:
