@@ -25,7 +25,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       # `npm run build` is `tsc`, so this typechecks the whole service as well.
-      # There is no backend integration suite yet (it would need Mongo + Redis);
+      # There is no backend integration suite yet (it would need PostgreSQL + Redis);
       # see the Testing section of README.md.
       - name: Typecheck and build
         run: npm run build

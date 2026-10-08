@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { User } from "../models/User";
+import { pool } from "../config/db";
+import { IUser, publicUser } from "../models/User";
 import { env } from "../config/env";
 import { asyncHandler } from "../utils/asyncHandler";
 
@@ -61,21 +62,25 @@ function setAuthCookie(req: Request, res: Response, token: string) {
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const data = registerSchema.parse(req.body);
 
-  const existing = await User.findOne({ email: data.email });
-  if (existing) return res.status(409).json({ error: "Email already registered" });
-
   const passwordHash = await bcrypt.hash(data.password, 10);
-  const user = await User.create({
-    name: data.name,
-    email: data.email,
-    passwordHash,
-    role: data.role,
-  });
+  let user: IUser;
+  try {
+    const result = await pool.query<IUser>(
+      `INSERT INTO users (name, email, password_hash, role)
+       VALUES ($1, LOWER($2), $3, $4)
+       RETURNING id, name, email, password_hash AS "passwordHash", role, created_at AS "createdAt"`,
+      [data.name, data.email, passwordHash, data.role]
+    );
+    user = result.rows[0];
+  } catch (error: any) {
+    if (error.code === "23505") return res.status(409).json({ error: "Email already registered" });
+    throw error;
+  }
 
-  const token = signToken({ id: user._id.toString(), role: user.role, email: user.email });
+  const token = signToken({ id: user.id, role: user.role, email: user.email });
   setAuthCookie(req, res, token);
   res.status(201).json({
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: publicUser(user),
     // Returned in the body as well as the cookie: the SPA stores it for the
     // Authorization header, which keeps auth working in cross-origin dev
     // setups and anywhere the browser won't accept the cookie.
@@ -86,16 +91,21 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const data = loginSchema.parse(req.body);
 
-  const user = await User.findOne({ email: data.email });
+  const result = await pool.query<IUser>(
+    `SELECT id, name, email, password_hash AS "passwordHash", role, created_at AS "createdAt"
+     FROM users WHERE email = LOWER($1)`,
+    [data.email]
+  );
+  const user = result.rows[0];
   if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
   const valid = await bcrypt.compare(data.password, user.passwordHash);
   if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
-  const token = signToken({ id: user._id.toString(), role: user.role, email: user.email });
+  const token = signToken({ id: user.id, role: user.role, email: user.email });
   setAuthCookie(req, res, token);
   res.json({
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: publicUser(user),
     token,
   });
 });
@@ -108,7 +118,12 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const me = asyncHandler(async (req: Request, res: Response) => {
-  const user = await User.findById(req.user!.id);
+  const result = await pool.query<IUser>(
+    `SELECT id, name, email, password_hash AS "passwordHash", role, created_at AS "createdAt"
+     FROM users WHERE id = $1`,
+    [req.user!.id]
+  );
+  const user = result.rows[0];
   if (!user) return res.status(404).json({ error: "User not found" });
-  res.json({ id: user._id, name: user.name, email: user.email, role: user.role });
+  res.json(publicUser(user));
 });

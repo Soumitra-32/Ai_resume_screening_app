@@ -16,16 +16,16 @@ job description. Applicants are then ranked by match score for the recruiter.
                  │ backend (Express/TS)   │────────────┐
                  │  REST API + Multer     │            │
                  └───┬────────────────┬───┘            │ BullMQ job
-                     │ mongoose       │ axios          │ (resume-scoring)
+                     │ node-postgres  │ axios          │ (resume-scoring)
         ┌────────────▼──────┐  ┌──────▼─────────────┐  │
-        │ MongoDB           │  │ ML service (FastAPI)│  │
+        │ PostgreSQL        │  │ ML service (FastAPI)│  │
         │ users/jobs/       │  │  /api/parse-resume  │  │
         │ resumes/          │  │  /api/score-resume  │  │
         │ applications      │  └────────────────────┘  │
         └───────────────────┘                          │
                                        ┌───────────────▼────────────┐
                                        │ resume-worker (Node/BullMQ)│
-                                       │  scores + updates MongoDB  │
+                                       │  scores + updates PostgreSQL│
                                        └───────────────┬────────────┘
                                                        │
                                                   ┌────▼────┐
@@ -37,19 +37,19 @@ job description. Applicants are then ranked by match score for the recruiter.
 
 | Path | What it is |
 | --- | --- |
-| `backend/` | Express + TypeScript REST API, Mongoose models, BullMQ queue/worker |
+| `backend/` | Express + TypeScript REST API, PostgreSQL, BullMQ queue/worker |
 | `frontend/` | React 18 + Vite + Tailwind SPA (Zustand store, axios client) |
 | `ML/` | FastAPI service: resume parsing, skill taxonomy, embedding similarity, weighted scoring |
 | `ML/notebooks/` | Exploration/experiment notebooks (data prep, NER, scoring, evaluation) |
 | `ML/data/` | Datasets used by the notebooks (not shipped in the Docker image) |
-| `database/` | Pointer to the Mongoose schemas (the project uses MongoDB, not SQL) |
-| `docker-compose.yml` | Mongo + Redis + ML + backend + worker + frontend |
+| `database/` | PostgreSQL schema and setup notes |
+| `docker-compose.yml` | PostgreSQL + Redis + ML + backend + worker + frontend |
 | `.github/workflows/` | `ci.yml` (build/lint/test/images), `deploy.yml` (Render hooks) |
 
 ## Quick start (Docker)
 
 ```bash
-cp .env.example .env      # then edit MONGO_PASSWORD / JWT_SECRET
+cp .env.example .env      # then edit POSTGRES_PASSWORD / JWT_SECRET
 docker compose up --build
 ```
 
@@ -65,8 +65,11 @@ docker compose exec backend npm run seed
 
 ## Local development (without Docker)
 
-Requires MongoDB and Redis running locally (e.g. `docker run -p 27017:27017 mongo:7`
-and `docker run -p 6379:6379 redis:7-alpine`).
+Requires a running PostgreSQL server and a Redis service reachable over TCP.
+Create the `resume_screener` database in your PostgreSQL installation, then
+copy `backend/.env.example` to `backend/.env` and set `DATABASE_URL` and
+`REDIS_URL`. Redis can be hosted; use its TCP URL for BullMQ, not a REST URL.
+On first backend/worker startup the project creates its tables and indexes.
 
 ```bash
 # 1. ML service
@@ -101,10 +104,10 @@ npm run dev           # http://localhost:5173, proxies /api to :5000
 
 | Variable | Purpose |
 | --- | --- |
-| `MONGO_USER` / `MONGO_PASSWORD` / `MONGO_DB` | MongoDB credentials; also interpolated into `MONGO_URI` by compose |
-| `MONGO_URI` | Full connection string used by the backend/worker |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | PostgreSQL credentials used by compose |
+| `DATABASE_URL` | PostgreSQL connection string used by the backend/worker |
 | `PORT` | Backend HTTP port (default `5000`) |
-| `NODE_ENV` | `production` makes `JWT_SECRET` and `MONGO_URI` mandatory |
+| `NODE_ENV` | `production` makes `JWT_SECRET` and `DATABASE_URL` mandatory |
 | `JWT_SECRET` / `JWT_EXPIRES_IN` | JWT signing key and lifetime (default `7d`) |
 | `ML_SERVICE_URL` | Base URL of the ML service (`http://ml-service:8000` in compose) |
 | `COOKIE_SECURE` | Optional override for the auth cookie's `Secure` flag; by default it follows the request protocol |
@@ -112,7 +115,7 @@ npm run dev           # http://localhost:5173, proxies /api to :5000
 
 ### `backend/.env` (local development outside Docker)
 
-`MONGO_URI`, `REDIS_URL`, `ML_SERVICE_URL`, `RESUME_QUEUE_CONCURRENCY`,
+`DATABASE_URL`, `REDIS_URL`, `ML_SERVICE_URL`, `RESUME_QUEUE_CONCURRENCY`,
 `PORT`, `NODE_ENV`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `UPLOAD_DIR`,
 `COOKIE_SECURE` — see `backend/.env.example`.
 
@@ -152,7 +155,7 @@ cd frontend && npm run lint && npm run build
 the score endpoint, including a regression test that a skill written just before
 a sentence period ("…and mongodb.") is still detected.
 
-**Gaps:** there are no backend integration tests (they would need MongoDB +
+**Gaps:** there are no backend integration tests (they would need PostgreSQL +
 Redis, so the CI job only typechecks/builds) and no frontend component tests
 (Vitest is not installed). `ML/data/*.csv` are committed for the notebooks
 (~100 MB total) — consider Git LFS if the repository grows further.

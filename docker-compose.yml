@@ -1,16 +1,16 @@
 services:
-  mongo:
-    image: mongo:7
-    container_name: resume_screener_mongo
+  postgres:
+    image: postgres:17-alpine
+    container_name: resume_screener_postgres
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?MONGO_USER not set}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD not set}
-      MONGO_INITDB_DATABASE: ${MONGO_DB:-resume_screener}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER not set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
+      POSTGRES_DB: ${POSTGRES_DB:-resume_screener}
     volumes:
-      - mongo-data:/data/db
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,7 +52,7 @@ services:
     env_file:
       - .env
     environment:
-      - MONGO_URI=mongodb://${MONGO_USER:?MONGO_USER not set}:${MONGO_PASSWORD:?MONGO_PASSWORD not set}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?POSTGRES_USER not set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}@postgres:5432/${POSTGRES_DB:-resume_screener}
       - REDIS_URL=redis://redis:6379
       - ML_SERVICE_URL=http://ml-service:8000
     ports:
@@ -60,7 +60,7 @@ services:
     volumes:
       - uploads-data:/app/uploads
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -77,13 +77,13 @@ services:
     env_file:
       - .env
     environment:
-      - MONGO_URI=mongodb://${MONGO_USER:?MONGO_USER not set}:${MONGO_PASSWORD:?MONGO_PASSWORD not set}@mongo:27017/${MONGO_DB:-resume_screener}?authSource=admin
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?POSTGRES_USER not set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}@postgres:5432/${POSTGRES_DB:-resume_screener}
       - REDIS_URL=redis://redis:6379
       - ML_SERVICE_URL=http://ml-service:8000
     volumes:
       - uploads-data:/app/uploads
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -102,6 +102,6 @@ services:
       - backend
 
 volumes:
-  mongo-data:
+  postgres-data:
   uploads-data:
   redis-data:

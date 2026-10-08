@@ -48,6 +48,7 @@ export interface ScoreResumeRequest {
   resume_text: string;
   job_description: string;
   required_skills?: string[];
+  infer_skills_if_empty?: boolean;
   resume_experience_years?: number;
   required_experience_years?: number;
 }

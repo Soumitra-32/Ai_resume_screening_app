@@ -24,7 +24,7 @@ export const env = {
       ? undefined
       : process.env.COOKIE_SECURE === "true",
   uploadDir: process.env.UPLOAD_DIR || "./uploads",
-  mongoUri: isProd ? required("MONGO_URI") : process.env.MONGO_URI || "mongodb://admin:admin123@localhost:27017/resume_screener?authSource=admin",
+  databaseUrl: required("DATABASE_URL"),
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   mlServiceUrl: process.env.ML_SERVICE_URL || "http://localhost:8000",
   resumeQueueConcurrency: Number(process.env.RESUME_QUEUE_CONCURRENCY) || 3,
