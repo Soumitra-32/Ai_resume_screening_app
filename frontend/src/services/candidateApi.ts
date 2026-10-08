@@ -33,11 +33,11 @@ export const candidateApi = {
     params.append('sortField', sortField);
     params.append('sortOrder', sortOrder);
 
-    const { data } = await apiClient.get<Candidate[]>(
+    const { data } = await apiClient.get<{ data: Candidate[]; pagination: unknown }>(
       `/candidates/jobs/${jobId}/candidates?${params.toString()}`
     );
 
-    return data;
+    return data.data;
   },
 
   async updateStatus(applicationId: string, status: string) {
