@@ -23,6 +23,7 @@ class ScoreRequest(BaseModel):
     resume_text: str
     job_description: str
     required_skills: List[str] = []
+    infer_skills_if_empty: bool = False
     resume_experience_years: Optional[int] = None
     required_experience_years: Optional[int] = None
 

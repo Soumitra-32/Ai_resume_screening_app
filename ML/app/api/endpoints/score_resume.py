@@ -20,6 +20,7 @@ async def score_resume(payload: ScoreRequest):
             resume_text=payload.resume_text,
             job_description=payload.job_description,
             required_skills=payload.required_skills,
+            infer_skills_if_empty=payload.infer_skills_if_empty,
             resume_experience_years=payload.resume_experience_years,
             required_experience_years=payload.required_experience_years,
         )

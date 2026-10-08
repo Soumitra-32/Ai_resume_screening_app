@@ -196,6 +196,24 @@ def test_no_required_skills_does_not_penalize_the_candidate():
     assert response.json()["skill_overlap"] == 1.0
 
 
+def test_empty_required_skills_can_be_inferred_from_job_description():
+    response = client.post(
+        "/api/score-resume",
+        json={
+            "resume_text": "Python developer with experience building APIs.",
+            "job_description": "Looking for a Python and Docker engineer.",
+            "required_skills": [],
+            "infer_skills_if_empty": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["skills_inferred_from_description"] is True
+    assert "python" in body["matched_required_skills"]
+    assert "docker" in body["missing_required_skills"]
+
+
 @pytest.mark.parametrize(
     "payload",
     [
