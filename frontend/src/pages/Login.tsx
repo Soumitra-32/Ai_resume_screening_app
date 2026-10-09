@@ -95,6 +95,9 @@ export default function Login() {
               minLength={8}
               required
             />
+            {mode === 'signup' && password.length > 0 && (
+              <PasswordStrength password={password} />
+            )}
           </div>
 
           {mode === 'signup' && (
@@ -135,6 +138,35 @@ export default function Login() {
           </button>
         </p>
       </div>
+    </div>
+  );
+}
+
+/** Lightweight password strength meter for the signup form. */
+function PasswordStrength({ password }: { password: string }) {
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (password.length >= 12) score++;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
+  if (/\d/.test(password) || /[^A-Za-z0-9]/.test(password)) score++;
+
+  const levels = [
+    { label: 'Too short', color: 'text-flag', bar: 'bg-flag', width: '20%' },
+    { label: 'Weak', color: 'text-flag', bar: 'bg-flag', width: '40%' },
+    { label: 'Fair', color: 'text-flag', bar: 'bg-flag', width: '60%' },
+    { label: 'Good', color: 'text-signal', bar: 'bg-signal', width: '80%' },
+    { label: 'Strong', color: 'text-signal', bar: 'bg-signal', width: '100%' },
+  ];
+  const level = levels[score];
+
+  return (
+    <div className="mt-2">
+      <div className="h-1 w-full overflow-hidden rounded-sm bg-ink-800">
+        <div className={`h-full transition-all ${level.bar}`} style={{ width: level.width }} />
+      </div>
+      <p className={`mt-1 text-xs ${level.color}`}>
+        Password strength: {level.label} — use 8+ characters with mixed case & numbers.
+      </p>
     </div>
   );
 }
