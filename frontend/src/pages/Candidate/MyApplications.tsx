@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { resumeApi } from '@/services/resumeApi';
 import ScoreBadge from '@/components/ScoreBadge';
+import StatusTimeline from '@/components/StatusTimeline';
+import { SkeletonList } from '@/components/Skeleton';
+import { useNotifications } from '@/hooks/useNotifications';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import type { Application } from '@/types';
 
 export default function MyApplications() {
@@ -8,6 +13,8 @@ export default function MyApplications() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const { notify } = useNotifications();
+  usePageTitle('My applications');
 
   useEffect(() => {
     (async () => {
@@ -30,11 +37,13 @@ export default function MyApplications() {
       setApplications((prev) =>
         prev.map((app) => (app.id === applicationId ? { ...app, status: 'pending' } : app))
       );
+      notify('Scoring restarted — check back shortly', 'success');
     } catch (err) {
       const message =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
         'Could not restart scoring for this application.';
       setError(message);
+      notify(message, 'error');
     } finally {
       setRetryingId(null);
     }
@@ -46,12 +55,17 @@ export default function MyApplications() {
       <p className="mt-1 text-sm text-ink-600">Track status and match scores across every role you've applied to.</p>
 
       {isLoading ? (
-        <p className="mt-8 text-sm text-ink-600">Loading…</p>
+        <div className="mt-8">
+          <SkeletonList count={3} />
+        </div>
       ) : error ? (
         <p className="mt-8 text-sm text-flag">{error}</p>
       ) : applications.length === 0 ? (
         <div className="card mt-8 p-10 text-center">
           <p className="text-paper">You haven't applied to any roles yet.</p>
+          <Link to="/candidate/jobs" className="btn-primary mt-4 inline-flex">
+            Browse open roles
+          </Link>
         </div>
       ) : (
         <div className="mt-6 space-y-3">
@@ -65,7 +79,7 @@ export default function MyApplications() {
                 key={app.id}
                 className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
                   <ScoreBadge score={app.matchScore} size="sm" />
                   <div>
                     <p className="text-sm text-paper">{job?.title ?? 'Role no longer available'}</p>
@@ -73,19 +87,22 @@ export default function MyApplications() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  {app.status === 'failed' && (
-                    <button
-                      className="text-xs text-signal hover:underline disabled:opacity-50"
-                      onClick={() => handleRetry(app.id)}
-                      disabled={retryingId === app.id}
-                    >
-                      {retryingId === app.id ? 'Retrying…' : 'Retry scoring'}
-                    </button>
-                  )}
-                  <p className="text-xs text-ink-600">
-                    {new Date(app.appliedAt).toLocaleDateString()}
-                  </p>
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                  <StatusTimeline status={app.status} />
+                  <div className="flex items-center gap-4">
+                    {app.status === 'failed' && (
+                      <button
+                        className="text-xs text-signal hover:underline disabled:opacity-50"
+                        onClick={() => handleRetry(app.id)}
+                        disabled={retryingId === app.id}
+                      >
+                        {retryingId === app.id ? 'Retrying…' : 'Retry scoring'}
+                      </button>
+                    )}
+                    <p className="text-xs text-ink-600">
+                      {new Date(app.appliedAt).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
               </div>
             );
