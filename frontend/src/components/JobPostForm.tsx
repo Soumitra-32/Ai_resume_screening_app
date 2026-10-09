@@ -7,11 +7,15 @@ interface JobPostFormProps {
   onSubmit: (payload: JobInput) => Promise<void> | void;
 }
 
+const STATUSES: NonNullable<JobInput['status']>[] = ['draft', 'open', 'closed', 'archived'];
+
 export default function JobPostForm({ initial, submitLabel = 'Post job', onSubmit }: JobPostFormProps) {
+  const isEdit = Boolean(initial);
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [skillsText, setSkillsText] = useState(initial?.requiredSkills?.join(', ') ?? '');
   const [experienceRequired, setExperienceRequired] = useState(initial?.experienceRequired ?? 0);
+  const [status, setStatus] = useState<NonNullable<JobInput['status']>>(initial?.status ?? 'open');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -19,8 +23,12 @@ export default function JobPostForm({ initial, submitLabel = 'Post job', onSubmi
     e.preventDefault();
     setFormError(null);
 
-    if (!title.trim() || !description.trim()) {
-      setFormError('Title and description are required.');
+    if (!title.trim()) {
+      setFormError('A job title is required.');
+      return;
+    }
+    if (!description.trim()) {
+      setFormError('A description is required.');
       return;
     }
 
@@ -31,7 +39,13 @@ export default function JobPostForm({ initial, submitLabel = 'Post job', onSubmi
 
     setIsSubmitting(true);
     try {
-      await onSubmit({ title: title.trim(), description: description.trim(), requiredSkills, experienceRequired });
+      await onSubmit({
+        title: title.trim(),
+        description: description.trim(),
+        requiredSkills,
+        experienceRequired,
+        status,
+      });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Could not save this job.');
     } finally {
@@ -84,18 +98,40 @@ export default function JobPostForm({ initial, submitLabel = 'Post job', onSubmi
         />
       </div>
 
-      <div className="max-w-[200px]">
-        <label className="field-label" htmlFor="experience">
-          Years of experience required
-        </label>
-        <input
-          id="experience"
-          type="number"
-          min={0}
-          className="field-input"
-          value={experienceRequired}
-          onChange={(e) => setExperienceRequired(Number(e.target.value))}
-        />
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="max-w-[200px]">
+          <label className="field-label" htmlFor="experience">
+            Years of experience required
+          </label>
+          <input
+            id="experience"
+            type="number"
+            min={0}
+            className="field-input"
+            value={experienceRequired}
+            onChange={(e) => setExperienceRequired(Number(e.target.value))}
+          />
+        </div>
+
+        {isEdit && (
+          <div className="max-w-[200px]">
+            <label className="field-label" htmlFor="status">
+              Status
+            </label>
+            <select
+              id="status"
+              className="field-input"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as NonNullable<JobInput['status']>)}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {capitalize(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <button type="submit" className="btn-primary" disabled={isSubmitting}>
@@ -103,4 +139,8 @@ export default function JobPostForm({ initial, submitLabel = 'Post job', onSubmi
       </button>
     </form>
   );
+}
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { jobApi } from '@/services/jobApi';
 import JobPostForm from '@/components/JobPostForm';
+import StatCard from '@/components/StatCard';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { SkeletonList } from '@/components/Skeleton';
+import { useNotifications } from '@/hooks/useNotifications';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import type { Job, JobInput } from '@/types';
 
 const JOB_STATUSES: Job['status'][] = ['draft', 'open', 'closed', 'archived'];
 
 export default function JobsList() {
+  usePageTitle('Your job postings');
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -14,6 +21,8 @@ export default function JobsList() {
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Job | null>(null);
+  const { notify } = useNotifications();
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +46,7 @@ export default function JobsList() {
     const job = await jobApi.create(payload);
     setJobs((prev) => [job, ...prev]);
     setShowForm(false);
+    notify('Job posted', 'success');
   }
 
   async function handleUpdate(jobId: string, payload: JobInput) {
@@ -44,6 +54,7 @@ export default function JobsList() {
     const updated = await jobApi.update(jobId, payload);
     setJobs((prev) => prev.map((job) => job.id === jobId ? { ...job, ...updated } : job));
     setEditingJobId(null);
+    notify('Job updated', 'success');
   }
 
   async function handleStatusChange(job: Job, status: Job['status']) {
@@ -59,20 +70,25 @@ export default function JobsList() {
     }
   }
 
-  async function handleDelete(job: Job) {
-    if (!window.confirm(`Delete “${job.title}”? This action cannot be undone.`)) return;
-    setBusyJobId(job.id);
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setBusyJobId(pendingDelete.id);
     setActionError(null);
     try {
-      await jobApi.remove(job.id);
-      setJobs((prev) => prev.filter((item) => item.id !== job.id));
-      if (editingJobId === job.id) setEditingJobId(null);
+      await jobApi.remove(pendingDelete.id);
+      setJobs((prev) => prev.filter((item) => item.id !== pendingDelete.id));
+      if (editingJobId === pendingDelete.id) setEditingJobId(null);
+      notify('Job deleted', 'success');
+      setPendingDelete(null);
     } catch {
-      setActionError(`Could not delete “${job.title}”.`);
+      setActionError(`Could not delete “${pendingDelete.title}”.`);
+      notify('Could not delete this job.', 'error');
     } finally {
       setBusyJobId(null);
     }
   }
+
+  const stats = computeStats(jobs);
 
   return (
     <div>
@@ -90,8 +106,17 @@ export default function JobsList() {
       {loadError && <p role="alert" className="mb-4 text-sm text-flag">{loadError}</p>}
       {actionError && <p role="alert" className="mb-4 text-sm text-flag">{actionError}</p>}
 
+      {!isLoading && jobs.length > 0 && (
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Open roles" value={stats.open} />
+          <StatCard label="Total roles" value={stats.total} />
+          <StatCard label="Applicants" value={stats.applicants} hint="across all roles" />
+          <StatCard label="Avg. applicants" value={stats.avgApplicants} hint="per role" />
+        </div>
+      )}
+
       {isLoading ? (
-        <p className="text-sm text-ink-600">Loading jobs…</p>
+        <SkeletonList count={3} />
       ) : jobs.length === 0 ? (
         <div className="card p-10 text-center">
           <p className="text-paper">No jobs posted yet.</p>
@@ -129,7 +154,7 @@ export default function JobsList() {
                 <button className="btn-secondary" disabled={busyJobId === job.id} onClick={() => { setShowForm(false); setEditingJobId(editingJobId === job.id ? null : job.id); }}>
                   {editingJobId === job.id ? 'Cancel edit' : 'Edit'}
                 </button>
-                <button className="btn-secondary border-flag/50 text-flag hover:border-flag" disabled={busyJobId === job.id} onClick={() => void handleDelete(job)}>
+                <button className="btn-secondary border-flag/50 text-flag hover:border-flag" disabled={busyJobId === job.id} onClick={() => setPendingDelete(job)}>
                   Delete
                 </button>
               </div>
@@ -143,6 +168,25 @@ export default function JobsList() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete job?"
+        message={`“${pendingDelete?.title ?? ''}” and all of its applications will be permanently removed.`}
+        confirmLabel="Delete"
+        destructive
+        isBusy={busyJobId === pendingDelete?.id}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
+}
+
+function computeStats(jobs: Job[]) {
+  const total = jobs.length;
+  const open = jobs.filter((j) => j.status === 'open').length;
+  const applicants = jobs.reduce((sum, j) => sum + (j.applicantCount ?? 0), 0);
+  const avgApplicants = total > 0 ? (applicants / total).toFixed(1) : '0';
+  return { total, open, applicants, avgApplicants };
 }
