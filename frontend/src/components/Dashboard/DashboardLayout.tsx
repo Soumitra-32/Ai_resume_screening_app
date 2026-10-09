@@ -48,13 +48,20 @@ export default function DashboardLayout() {
       </aside>
 
       <div className="flex-1">
-        <header className="flex items-center justify-between border-b border-line px-6 py-4 sm:hidden">
-          <p className="font-display text-lg text-paper">
-            Sift<span className="text-signal">.</span>
-          </p>
-          <button onClick={logout} className="text-xs text-ink-600">
-            Log out
-          </button>
+        <header className="border-b border-line px-4 py-3 sm:hidden">
+          <div className="flex items-center justify-between">
+            <p className="font-display text-lg text-paper">Sift<span className="text-signal">.</span></p>
+            <button onClick={logout} className="text-xs text-ink-600">Log out</button>
+          </div>
+          <nav aria-label="Main navigation" className="mt-3 flex gap-2 overflow-x-auto">
+            {nav.map((item) => (
+              <NavLink key={item.to} to={item.to} className={({ isActive }) =>
+                `whitespace-nowrap rounded-sm px-3 py-2 text-sm transition ${isActive ? 'bg-ink-800 text-signal' : 'text-ink-600 hover:text-paper'}`
+              }>
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
         </header>
         <main className="mx-auto max-w-5xl px-6 py-10">
           <Outlet />
