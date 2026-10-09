@@ -32,6 +32,11 @@ export const resumeApi = {
     return data;
   },
 
+  /** Delete one of the candidate's own resumes (blocked server-side if it has active applications). */
+  async remove(resumeId: string): Promise<void> {
+    await apiClient.delete(`/resumes/${resumeId}`);
+  },
+
   /**
    * Re-queue scoring for an application whose initial enqueue failed
    * (GET /applications/mine shows it with status "failed").

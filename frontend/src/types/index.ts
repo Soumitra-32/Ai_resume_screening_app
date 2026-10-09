@@ -39,6 +39,9 @@ export interface Resume {
   parsedText?: string;
   extractedSkills?: string[];
   extractedExperience?: number;
+  extractedName?: string;
+  extractedEmail?: string;
+  extractedPhone?: string;
   uploadedAt: string;
 }
 
