@@ -29,6 +29,10 @@
     @apply inline-flex items-center justify-center gap-2 rounded-sm border border-line px-4 py-2 text-sm font-medium text-paper transition hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-sm border border-flag px-4 py-2 text-sm font-medium text-flag transition hover:bg-flag hover:text-ink-950 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
   .field-label {
     @apply mb-1 block text-xs uppercase tracking-wide text-ink-600;
   }
@@ -39,5 +43,10 @@
 
   .card {
     @apply rounded-sm border border-line bg-ink-900;
+  }
+
+  /* Skeleton loading placeholder with a subtle pulse. */
+  .skeleton {
+    @apply animate-pulse rounded-sm bg-ink-800;
   }
 }
