@@ -3,28 +3,33 @@ interface ScoreBadgeProps {
   size?: 'sm' | 'md';
 }
 
+// Restyled to the app's palette. The score thresholds map to signal (strong),
+// flag (moderate) and ink-600 (weak) so badges sit naturally on the dark UI.
+function tier(score: number): string {
+  if (score >= 80) return 'border-signal/50 bg-signal/10 text-signal';
+  if (score >= 60) return 'border-signal/30 bg-signal/5 text-signal-dim';
+  if (score >= 40) return 'border-flag/50 bg-flag/10 text-flag';
+  return 'border-line bg-ink-800 text-ink-600';
+}
+
 export default function ScoreBadge({ score, size = 'md' }: ScoreBadgeProps) {
   if (score === null) {
     return (
-      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border bg-gray-100 text-gray-500 border-gray-300">
+      <span
+        className={`inline-flex items-center rounded-full border border-line bg-ink-800 font-semibold text-ink-600 ${
+          size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm'
+        }`}
+      >
         Not scored
       </span>
     );
   }
 
   const pct = Math.round(score * 100);
-
-  const getColor = () => {
-    if (pct >= 80) return 'bg-green-100 text-green-800 border-green-300';
-    if (pct >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    if (pct >= 40) return 'bg-orange-100 text-orange-800 border-orange-300';
-    return 'bg-red-100 text-red-800 border-red-300';
-  };
-
   const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm';
 
   return (
-    <span className={`inline-flex items-center rounded-full font-semibold border ${sizeClasses} ${getColor()}`}>
+    <span className={`inline-flex items-center rounded-full border font-semibold ${sizeClasses} ${tier(pct)}`}>
       {pct}% Match
     </span>
   );

@@ -1,17 +1,9 @@
-import { useState, useCallback } from 'react';
-import { Notification } from '../components/NotificationToast';
+import { useToastStore } from '@/store/toastStore';
 
+/**
+ * Thin wrapper around the global toast store so existing call sites keep the
+ * same shape. Notifications are now shared app-wide instead of per-page.
+ */
 export function useNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-
-  const notify = useCallback((message: string, type: Notification['type'] = 'info') => {
-    const id = crypto.randomUUID();
-    setNotifications((prev) => [...prev, { id, message, type }]);
-  }, []);
-
-  const dismiss = useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  }, []);
-
-  return { notifications, notify, dismiss };
+  return useToastStore();
 }
