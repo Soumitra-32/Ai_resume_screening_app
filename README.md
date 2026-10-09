@@ -1,8 +1,14 @@
 # Sift — AI Resume Screening
 
-Recruiters post jobs; candidates upload a resume (PDF or DOCX). A Python ML
-service parses the resume, extracts skills/experience, and scores it against the
-job description. Applicants are then ranked by match score for the recruiter.
+Sift is an AI-assisted resume screening project for **IT and technology roles**
+such as software engineering, data, and related technical positions. Recruiters
+post a technology job with its description, required technical skills, and
+experience level; candidates upload a PDF or DOCX resume. The Python ML service
+extracts resume text, skills, and experience, then ranks applicants against the
+posting. Matching uses a curated technology skill taxonomy and semantic
+similarity, so it is not designed or validated for unrelated fields such as
+literature or drama. Recruiters should review rankings alongside the original
+resumes rather than treat scores as hiring decisions.
 
 ## Architecture
 
@@ -135,6 +141,25 @@ cannot be used).
 | `GET /api/jobs` | any | Recruiters: own postings. Candidates: open postings |
 | `GET /api/jobs/:id` | any | Job detail (ownership/status enforced) |
 | `POST /api/jobs` | recruiter | Create a posting |
+| `PUT /api/jobs/:id` | recruiter | Update an owned posting, including its status (`draft`, `open`, `closed`, or `archived`) |
+| `DELETE /api/jobs/:id` | recruiter | Delete an owned posting and its applications |
+| `POST /api/jobs/:id/apply` | candidate | Apply with an existing resume (enqueues scoring) |
+| `GET /api/jobs/:id/applications` | recruiter | List applications for an owned posting |
+| `POST /api/resumes/upload` | candidate | Upload a PDF/DOCX resume (optional `jobId` applies atomically) |
+| `GET /api/resumes/mine` | candidate | List own resumes |
+| `GET /api/resumes/:id` | owner or authorised recruiter | Get resume metadata |
+| `GET /api/resumes/:id/file` | owner or authorised recruiter | Download the original file |
+| `DELETE /api/resumes/:id` | candidate | Delete an unused resume |
+| `GET /api/candidates/jobs/:jobId/candidates` | recruiter | Ranked candidates (filters, sorting, pagination) |
+| `GET /api/candidates/jobs/:jobId/skills` | recruiter | Normalised required skills for the filter panel |
+| `PATCH /api/candidates/applications/:id/status` | recruiter | Update an application's status |
+| `GET /api/applications/mine` | candidate | List own applications |
+| `POST /api/applications/:id/retry` | candidate | Re-queue scoring for a failed application |
+| `GET /health` | - | Backend liveness probe |
+
+The recruiter interface supports editing and deleting job postings, changing a
+posting's status, and opening its ranked candidates. Dashboard navigation is
+available in the mobile header as well as the desktop sidebar.
 
 ## Testing & linting
 
@@ -187,22 +212,6 @@ Redis, so the CI job only typechecks/builds) and no frontend component tests
 * **No rate limiting** or request throttling on the API.
 * **Skill extraction is rule/taxonomy-based** (`ML/app/services/skill_taxonomy.py`),
   not a trained NER model; the notebooks explore the trained approach.
-
-| `PUT /api/jobs/:id` | recruiter | Update own posting |
-| `DELETE /api/jobs/:id` | recruiter | Delete own posting (+ its applications) |
-| `POST /api/jobs/:id/apply` | candidate | Apply with an existing resume (enqueues scoring) |
-| `GET /api/jobs/:id/applications` | recruiter | All applications for own job |
-| `POST /api/resumes/upload` | candidate | Upload PDF/DOCX (optional `jobId` applies atomically) |
-| `GET /api/resumes/mine` | candidate | Own resumes |
-| `GET /api/resumes/:id` | owner or authorised recruiter | Resume metadata |
-| `GET /api/resumes/:id/file` | owner or authorised recruiter | Download the original file |
-| `DELETE /api/resumes/:id` | candidate | Delete an unused resume |
-| `GET /api/candidates/jobs/:jobId/candidates` | recruiter | Ranked candidates (filters, sorting, pagination) |
-| `GET /api/candidates/jobs/:jobId/skills` | recruiter | Normalised required skills for the filter panel |
-| `PATCH /api/candidates/applications/:id/status` | recruiter | Update an application's status |
-| `GET /api/applications/mine` | candidate | Own applications |
-| `POST /api/applications/:id/retry` | candidate | Re-queue scoring for a `failed` application |
-| `GET /health` | – | Liveness probe |
 
 ML service: `GET /health`, `POST /api/parse-resume` (multipart `file`),
 `POST /api/score-resume` (JSON).
