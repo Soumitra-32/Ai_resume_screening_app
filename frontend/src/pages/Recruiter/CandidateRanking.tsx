@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { candidateApi } from '../../services/candidateApi';
+import { useEffect, useRef, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { candidateApi, type Pagination } from '../../services/candidateApi';
 import ScoreBadge from '../../components/ScoreBadge';
 import RankingFiltersPanel from '../../components/RankingFiltersPanel';
 import ResumePreviewModal from '../../components/ResumePreviewModal';
-import NotificationToast from '../../components/NotificationToast';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import PaginationBar from '../../components/Pagination';
+import { SkeletonTableRows } from '../../components/Skeleton';
 import { useNotifications } from '../../hooks/useNotifications';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import { downloadCsv } from '../../utils/csv';
+import { copyToClipboard } from '../../hooks/useSavedJobs';
 import {
   Candidate,
   RankingFilters,
@@ -44,6 +49,8 @@ function SortHeader({
 
 export default function CandidateRanking() {
   const { jobId } = useParams<{ jobId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  usePageTitle('Candidate Ranking');
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [availableSkills, setAvailableSkills] = useState<string[]>([]);
@@ -51,18 +58,33 @@ export default function CandidateRanking() {
   const [previewCandidate, setPreviewCandidate] =
     useState<Candidate | null>(null);
 
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 1,
+  });
+
   const [sortField, setSortField] = useState<SortField>('matchScore');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
-  const [filters, setFilters] = useState<RankingFilters>({
-    minScore: 0,
-    minExperience: 0,
-    skills: [],
-    status: '',
-    search: '',
-  });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pendingBulkStatus, setPendingBulkStatus] = useState<ApplicationStatus | null>(null);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
-  const { notifications, notify, dismiss } = useNotifications();
+  // Restore filters/sort/page from the URL so a filtered view is shareable
+  // and survives a refresh.
+  const [filters, setFilters] = useState<RankingFilters>(() => ({
+    minScore: Number(searchParams.get('minScore')) || 0,
+    minExperience: Number(searchParams.get('minExperience')) || 0,
+    skills: searchParams.get('skills') ? searchParams.get('skills')!.split(',').filter(Boolean) : [],
+    status: searchParams.get('status') ?? '',
+    search: searchParams.get('search') ?? '',
+  }));
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
+
+  const { notify } = useNotifications();
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!jobId) return;
@@ -73,6 +95,36 @@ export default function CandidateRanking() {
       .catch(() => {});
   }, [jobId]);
 
+  // "/" focuses the search box for fast filtering (unless already typing).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Persist filters/sort/page to the URL (without cluttering history).
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.minScore) params.set('minScore', String(filters.minScore));
+    if (filters.minExperience) params.set('minExperience', String(filters.minExperience));
+    if (filters.skills.length) params.set('skills', filters.skills.join(','));
+    if (filters.status) params.set('status', filters.status);
+    if (filters.search) params.set('search', filters.search);
+    if (sortField !== 'matchScore') params.set('sortField', sortField);
+    if (sortOrder !== 'desc') params.set('sortOrder', sortOrder);
+    if (page > 1) params.set('page', String(page));
+    setSearchParams(params, { replace: true });
+  }, [filters, sortField, sortOrder, page, setSearchParams]);
+
   useEffect(() => {
     if (!jobId) return;
 
@@ -81,9 +133,12 @@ export default function CandidateRanking() {
     setLoading(true);
 
     candidateApi
-      .getRankedCandidates(jobId, filters, sortField, sortOrder)
-      .then((rows) => {
-        if (!cancelled) setCandidates(rows);
+      .getRankedCandidates(jobId, filters, sortField, sortOrder, page)
+      .then((result) => {
+        if (!cancelled) {
+          setCandidates(result.data);
+          setPagination(result.pagination);
+        }
       })
       .catch(() => {
         if (!cancelled) notify('Failed to load candidates', 'error');
@@ -95,7 +150,7 @@ export default function CandidateRanking() {
     return () => {
       cancelled = true;
     };
-  }, [jobId, filters, sortField, sortOrder, notify]);
+  }, [jobId, filters, sortField, sortOrder, page, notify]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -104,6 +159,7 @@ export default function CandidateRanking() {
       setSortField(field);
       setSortOrder('desc');
     }
+    setPage(1);
   };
 
   const handleStatusChange = async (
@@ -127,33 +183,146 @@ export default function CandidateRanking() {
     }
   };
 
+  const toggleSelected = (applicationId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(applicationId)) next.delete(applicationId);
+      else next.add(applicationId);
+      return next;
+    });
+  };
+
+  const allOnPageSelected =
+    candidates.length > 0 && candidates.every((c) => selected.has(c.applicationId));
+
+  const toggleSelectAllOnPage = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        candidates.forEach((c) => next.delete(c.applicationId));
+      } else {
+        candidates.forEach((c) => next.add(c.applicationId));
+      }
+      return next;
+    });
+  };
+
+  const confirmBulkStatus = async () => {
+    if (!pendingBulkStatus || selected.size === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      await Promise.all(
+        [...selected].map((applicationId) =>
+          candidateApi.updateStatus(applicationId, pendingBulkStatus)
+        )
+      );
+      setCandidates((prev) =>
+        prev.map((c) => (selected.has(c.applicationId) ? { ...c, status: pendingBulkStatus } : c))
+      );
+      notify(`${selected.size} candidate${selected.size === 1 ? '' : 's'} marked as ${pendingBulkStatus}`, 'success');
+      setSelected(new Set());
+      setPendingBulkStatus(null);
+    } catch {
+      notify('Failed to update some candidates', 'error');
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleExportCsv = () => {
+    if (candidates.length === 0) return;
+    const rows: (string | number | null)[][] = [
+      ['Name', 'Email', 'Match Score (%)', 'Experience (yrs)', 'Matched Skills', 'Status', 'Applied At'],
+      ...candidates.map((c) => [
+        c.name,
+        c.email,
+        c.matchScore == null ? '' : Math.round(c.matchScore * 100),
+        c.experienceYears,
+        c.skills.filter((s) => s.matched).map((s) => s.name).join('; '),
+        c.status,
+        new Date(c.appliedAt).toISOString(),
+      ]),
+    ];
+    downloadCsv(`candidates-job-${jobId ?? 'export'}.csv`, rows);
+    notify('Candidate list exported', 'success');
+  };
+
+  const handleCopyEmail = async (email: string) => {
+    const ok = await copyToClipboard(email);
+    notify(ok ? `Copied ${email}` : 'Could not copy email', ok ? 'success' : 'error');
+  };
+
+
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
       <div className="md:col-span-1">
         <RankingFiltersPanel
           availableSkills={availableSkills}
-          onChange={setFilters}
+          onChange={(next) => {
+            setFilters(next);
+            setPage(1);
+          }}
+          searchInputRef={searchInputRef}
         />
       </div>
 
       <div className="md:col-span-3">
-        <h1 className="mb-4 font-display text-xl text-paper">
-          Candidate Ranking
-        </h1>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-xl text-paper">
+            Candidate Ranking
+          </h1>
+
+          <div className="flex items-center gap-3">
+            {selected.size > 0 && (
+              <>
+                <span className="text-xs text-ink-600">{selected.size} selected</span>
+                <button
+                  className="btn-secondary px-3 py-1 text-xs"
+                  disabled={isBulkUpdating}
+                  onClick={() => setPendingBulkStatus('shortlisted')}
+                >
+                  Shortlist
+                </button>
+                <button
+                  className="btn-secondary px-3 py-1 text-xs"
+                  disabled={isBulkUpdating}
+                  onClick={() => setPendingBulkStatus('rejected')}
+                >
+                  Reject
+                </button>
+              </>
+            )}
+            <button
+              className="btn-secondary px-3 py-1 text-xs"
+              onClick={handleExportCsv}
+              disabled={candidates.length === 0}
+            >
+              Export CSV
+            </button>
+          </div>
+        </div>
 
         {loading ? (
-          <p className="text-sm text-ink-600">
-            Loading candidates...
-          </p>
+          <SkeletonTableRows count={5} />
         ) : candidates.length === 0 ? (
           <p className="text-sm text-ink-600">
             No candidates match the current filters.
           </p>
         ) : (
-          <div className="card overflow-x-auto">
-            <table className="min-w-full divide-y divide-line">
-              <thead className="bg-ink-800">
-                <tr>
+          <>
+            <div className="card overflow-x-auto">
+              <table className="min-w-full divide-y divide-line">
+                <thead className="bg-ink-800">
+                  <tr>
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all candidates on this page"
+                        checked={allOnPageSelected}
+                        onChange={toggleSelectAllOnPage}
+                        className="accent-signal"
+                      />
+                    </th>
                   <SortHeader
                     field="name"
                     label="Candidate"
@@ -199,12 +368,29 @@ export default function CandidateRanking() {
                     className="hover:bg-ink-800/40"
                   >
                     <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${c.name}`}
+                        checked={selected.has(c.applicationId)}
+                        onChange={() => toggleSelected(c.applicationId)}
+                        className="accent-signal"
+                      />
+                    </td>
+
+                    <td className="px-4 py-3">
                       <div className="font-medium text-paper">
                         {c.name}
                       </div>
 
-                      <div className="text-xs text-ink-600">
+                      <div className="flex items-center gap-2 text-xs text-ink-600">
                         {c.email}
+                        <button
+                          onClick={() => handleCopyEmail(c.email)}
+                          className="text-signal hover:underline"
+                          title="Copy email"
+                        >
+                          Copy
+                        </button>
                       </div>
                     </td>
 
@@ -280,6 +466,15 @@ export default function CandidateRanking() {
               </tbody>
             </table>
           </div>
+
+          <PaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+          />
+          </>
         )}
       </div>
 
@@ -292,9 +487,14 @@ export default function CandidateRanking() {
         />
       )}
 
-      <NotificationToast
-        notifications={notifications}
-        onDismiss={dismiss}
+      <ConfirmDialog
+        open={pendingBulkStatus !== null}
+        title={`Mark ${selected.size} candidate${selected.size === 1 ? '' : 's'} as ${pendingBulkStatus ?? ''}?`}
+        message="This updates the status for every selected candidate on this page."
+        confirmLabel="Update"
+        isBusy={isBulkUpdating}
+        onConfirm={confirmBulkStatus}
+        onCancel={() => setPendingBulkStatus(null)}
       />
     </div>
   );

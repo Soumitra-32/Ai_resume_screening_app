@@ -1,13 +1,27 @@
 import { apiClient } from './apiClient';
 import type { Candidate, RankingFilters } from '../types/candidate';
 
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface RankedCandidatesResult {
+  data: Candidate[];
+  pagination: Pagination;
+}
+
 export const candidateApi = {
   async getRankedCandidates(
     jobId: string,
     filters: Partial<RankingFilters>,
     sortField: string,
-    sortOrder: string
-  ) {
+    sortOrder: string,
+    page = 1,
+    limit = 20
+  ): Promise<RankedCandidatesResult> {
     const params = new URLSearchParams();
 
     if (filters.minScore !== undefined) {
@@ -32,12 +46,17 @@ export const candidateApi = {
 
     params.append('sortField', sortField);
     params.append('sortOrder', sortOrder);
+    params.append('page', String(page));
+    params.append('limit', String(limit));
 
-    const { data } = await apiClient.get<{ data: Candidate[]; pagination: unknown }>(
+    const { data } = await apiClient.get<RankedCandidatesResult>(
       `/candidates/jobs/${jobId}/candidates?${params.toString()}`
     );
 
-    return data.data;
+    return {
+      data: data.data ?? [],
+      pagination: data.pagination ?? { page, limit, total: data.data?.length ?? 0, totalPages: 1 },
+    };
   },
 
   async updateStatus(applicationId: string, status: string) {

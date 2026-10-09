@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type RefObject } from 'react';
 import { RankingFilters } from '../types/candidate';
 
 interface Props {
   availableSkills: string[];
   onChange: (filters: RankingFilters) => void;
+  searchInputRef?: RefObject<HTMLInputElement>;
 }
 
 const DEFAULT_FILTERS: RankingFilters = {
@@ -17,6 +18,7 @@ const DEFAULT_FILTERS: RankingFilters = {
 export default function RankingFiltersPanel({
   availableSkills,
   onChange,
+  searchInputRef,
 }: Props) {
   const [filters, setFilters] = useState<RankingFilters>(
     DEFAULT_FILTERS
@@ -63,7 +65,8 @@ export default function RankingFiltersPanel({
 
       <input
         type="text"
-        placeholder="Search candidate name/email..."
+        ref={searchInputRef}
+        placeholder="Search candidate name/email…  (press /)"
         value={filters.search}
         onChange={(e) =>
           setFilters((prev) => ({
